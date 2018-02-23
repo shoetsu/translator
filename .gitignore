@@ -1,0 +1,17 @@
+*.pyc
+*.txt
+_bak
+\#*
+._*
+ref
+*.gz
+.#*
+.fuse*
+*.gz*
+*.txt*
+tmp
+*~
+nohup.out
+_trash
+results
+tmp.py

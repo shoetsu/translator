@@ -1,0 +1,32 @@
+# Text processing.
+input_max_len = 30
+output_max_len = 5
+vocab_size = 30000
+lowercase=True
+
+# Training.
+batch_size=10
+max_to_keep = 10
+max_epoch = 60
+max_gradient_norm = 5.0
+learning_rate = 0.001
+decay_rate = 0.999
+decay_frequency = 100
+dropout_rate=0.2
+
+# Structure.
+num_layers=1
+hidden_size = 50
+cell_type=GRUCell
+model_type=PointerNetwork
+
+dataset_type=PriceDataset
+dataset_path=dataset/test.annotated.csv
+
+#Pretrained embeddings.
+embeddings=[${glove_300d_filtered}]
+glove_300d_filtered {
+  path = glove.840B.300d.txt.filtered
+  size = 300
+  format = txt
+}
