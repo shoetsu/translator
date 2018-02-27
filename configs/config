@@ -1,13 +1,14 @@
 # Text processing.
 input_max_len = 30
 output_max_len = 4
-vocab_size = 30000
+#vocab_size = 30000
+vocab_size = 0
 lowercase=True
 
 # Training.
 batch_size=10
 max_to_keep = 10
-max_epoch = 30
+max_epoch = 50
 max_gradient_norm = 5.0
 learning_rate = 0.001
 decay_rate = 0.999

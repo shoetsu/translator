@@ -104,7 +104,7 @@ class WordVocabularyBase(VocabularyBase):
 
   def str2ids(self, sentence):
     tokens = self.tokenizer(sentence) 
-    res = [self.token2id(word) for word in tokens]
+    return [self.token2id(word) for word in tokens]
 
   def tokens2ids(self, tokens):
     if type(tokens) == list:
@@ -117,9 +117,12 @@ class WordVocabularyBase(VocabularyBase):
 
 class PredefinedVocabWithEmbeddingBase(object):
   def init_vocab(self, emb_configs, source_dir, vocab_size=0):
+    start_vocab = START_VOCAB
+    # if self.tokenizer.lowercase:
+    #   start_vocab = [x.lower for x in lowercase]
     pretrained = [self.load_vocab(os.path.join(source_dir, c['path']), c['format'] == 'vec') for c in emb_configs]
     rev_vocab = common.flatten([e.keys() for e in pretrained])
-    rev_vocab = OrderedSet(START_VOCAB + [self.tokenizer(w, flatten=True)[0] 
+    rev_vocab = OrderedSet(start_vocab + [self.tokenizer(w, flatten=True)[0] 
                                           for w in rev_vocab])
     if vocab_size:
       rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size])

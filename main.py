@@ -66,22 +66,43 @@ class Manager(object):
       sys.stdout.write('Epoch %d \n' % (epoch))
       loss = self.model.train(train_batches)
       sys.stdout.write('Train loss: %.3f \n' % (loss))
-      #test_inputs, test_targets, predictions = self.model.test(test_batches)
+
       predictions = self.model.test(test_batches)
       sys.stdout = open(self.tests_path + '/test.%02d.txt' % epoch, 'w')
-      for j, (s, t) in enumerate(self.dataset.test.raw_data):
+      test_inputs_tokens, _ = self.dataset.test.symbolized
+      for j, (s, t) in enumerate(zip(*self.dataset.test.raw_data)):
+        token_inp = self.vocab.ids2tokens(test_inputs_tokens[j], join=True)
         inp = ' '.join([x for x in s if x not in [_BOS, _PAD]])
         out = ' '.join([x for x in t if x not in [_BOS, _PAD]])
-        pred =  [inp[k] for k in predictions[j] if k != 0]
+        pred =  [s[k] for k in predictions[j] if k != 0]
         pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
-        sys.stdout.write('Test input      %d:\t%s\n' % (j, inp))
-        sys.stdout.write('Test output     %d:\t%s\n' % (j, out))
-        sys.stdout.write('Test prediction %d:\t%s\n' % (j, pred))
+        sys.stdout.write('Test input       %d:\t%s\n' % (j, inp))
+        sys.stdout.write('Test input (unk) %d:\t%s\n' % (j, token_inp))
+        sys.stdout.write('Test output      %d:\t%s\n' % (j, out))
+        sys.stdout.write('Test prediction  %d:\t%s\n' % (j, pred))
       sys.stdout = sys.__stdout__
       self.model.add_epoch()
       if epoch % 5 == 0:
         self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
     self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
+
+
+  @common.timewatch(logger)
+  def test(self):
+    config = self.config
+    test_batches = self.dataset.test.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
+    predictions = self.model.test(test_batches)
+
+    for j, (s, t) in enumerate(zip(*self.dataset.test.raw_data)):
+      token_inp = self.vocab.ids2tokens(test_inputs_tokens[j], join=True)
+      inp = ' '.join([x for x in s if x not in [_BOS, _PAD]])
+      out = ' '.join([x for x in t if x not in [_BOS, _PAD]])
+      pred =  [s[k] for k in predictions[j] if k != 0]
+      pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
+      sys.stdout.write('Test input       %d:\t%s\n' % (j, inp))
+      sys.stdout.write('Test input (unk) %d:\t%s\n' % (j, token_inp))
+      sys.stdout.write('Test output      %d:\t%s\n' % (j, out))
+      sys.stdout.write('Test prediction  %d:\t%s\n' % (j, pred))
 
   def create_model(self, config, vocab, checkpoint_path=None):
     m = getattr(models, config.model_type)(self.sess, config, vocab)
@@ -126,6 +147,8 @@ def main(args):
     manager = Manager(args, sess)
     if args.mode == 'train':
       manager.train()
+    elif args.mode == 'test':
+      manager.test()
     else:
       pass
   return manager

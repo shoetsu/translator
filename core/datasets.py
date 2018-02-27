@@ -48,14 +48,14 @@ class PriceDataset(DatasetBase):
     sources, targets = self.symbolized
     sources =  tf.keras.preprocessing.sequence.pad_sequences(sources, maxlen=config.input_max_len+1, padding='post', truncating='post', value=BOS_ID)
     targets =  tf.keras.preprocessing.sequence.pad_sequences(targets, maxlen=config.output_max_len, padding='post', truncating='post', value=BOS_ID)
-    sources = infer_dataset = tf.data.Dataset.from_tensor_slices(sources)
-    targets = infer_dataset = tf.data.Dataset.from_tensor_slices(targets)
+    sources = tf.data.Dataset.from_tensor_slices(sources)
+    targets = tf.data.Dataset.from_tensor_slices(targets)
     dataset = tf.data.Dataset.zip((sources, targets))
+    return dataset
 
   @property 
   def raw_data(self):
-    return zip(self.original_sources, self.targets)
-  
+    return self.original_sources, self.targets
 
   @property
   def symbolized(self):

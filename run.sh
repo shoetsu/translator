@@ -17,7 +17,7 @@ bin_file=bins/wikiP2D.py
 checkpoint_path=${argv[0]}
 mode=${argv[1]}
 config_path=${argv[2]}
-config_file=experiments.conf
+config_file=config
 log_file=$checkpoint_path/${mode}.log
 
 if [ "${config_path}" = "" ]; then
