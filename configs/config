@@ -17,6 +17,7 @@ dropout_rate=0.2
 # Structure.
 num_layers=1
 hidden_size = 50
+#cell_type=BasicLSTMCell
 cell_type=GRUCell
 model_type=PointerNetwork
 

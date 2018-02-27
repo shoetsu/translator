@@ -1,5 +1,6 @@
-# coding:utf-8
+import math
 import tensorflow as tf
+from core.extensions.pointer import pointer_decoder
 
 def setup_cell(cell_type, size, num_layers):
   def _get_single_cell():
@@ -43,22 +44,10 @@ class ModelBase(object):
   def add_epoch(self):
     self.sess.run(tf.assign(self.epoch, tf.add(self.epoch, tf.constant(1, dtype=tf.int32))))
 
-
-class PointerNetwork(ModelBase):
-  #def __init__(self, max_len, input_size, size, num_layers, max_gradient_norm, batch_size, learning_rate, learning_rate_decay_factor):
-  def __init__(self, sess, config):
-    super(PointerNetwork, self).__init__(sess, config)
-    self.hidden_size = config.hidden_size
-    self.batch_size = config.batch_size
-    self.input_max_len = config.input_max_len
-    self.output_max_len = config.output_max_len
-
-    self.encoder_cell = setup_cell(config.cell_type, config.hidden_size, config.num_layers)
-    self.decoder_cell = setup_cell(config.cell_type, config.hidden_size, config.num_layers)
-
-    with tf.name_scope('Placeholder'):
-      self.encoder_inputs = tf.placeholder(
-        tf.float32, [None, config.input_max_len], name="EncoderInput")
-
-      self.decoder_inputs = tf.placeholder(
-        tf.float32, [None, config.output_max_len], name="DecoderInput")
+  def initialize_embeddings(self, name, emb_shape, initializer=None, 
+                            trainable=True):
+    if not initializer:
+      initializer = tf.random_uniform_initializer(-math.sqrt(3), math.sqrt(3))
+    embeddings = tf.get_variable(name, emb_shape, trainable=trainable,
+                                 initializer=initializer)
+    return embeddings

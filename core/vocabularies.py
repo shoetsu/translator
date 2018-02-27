@@ -35,22 +35,22 @@ def separate_symbols(sent):
     sent = sent.replace(sym, " %s " % sym)
   return ' '.join(sent.split())
 
-def get_word_tokenizer(lowercase=False, normalize_digits=False):
-  # default settings.
-  _normalize_digits = normalize_digits
-  _lowercase = lowercase
-  def _tokenizer(sent, normalize_digits=None, lowercase=None, flatten=None):
+class WordTokenizer(object):
+  def __init__(self, lowercase=False, normalize_digits=False):
+    self.lowercase = lowercase
+    self.normalize_digits = normalize_digits
+
+  def __call__(self, sent, normalize_digits=None, lowercase=None, flatten=None):
     sent = sent.replace('\n', '')
     sent = separate_numbers(sent)
     sent = separate_symbols(sent)
-    normalize_digits = normalize_digits if normalize_digits is not None else _normalize_digits
-    lowercase = lowercase if lowercase is not None else _lowercase
+    normalize_digits = normalize_digits if normalize_digits is not None else self.normalize_digits
+    lowercase = lowercase if lowercase is not None else self.lowercase
     if normalize_digits:
       sent = re.sub(_DIGIT_RE, "0", sent) 
     if lowercase:
       sent = sent.lower()
     return word_tokenize(sent)
-  return _tokenizer
 
 
 class VocabularyBase(object):
@@ -101,8 +101,8 @@ class WordVocabularyBase(VocabularyBase):
   def tokens2ids(self, tokens):
     if type(tokens) == list:
       res = [self.token2id(word) for word in tokens]
-    elif type(tokens) == tf.Tensor:
-      res = self.table.lookup(tokens)
+    elif type(tokens) == tf.Tensor and self.lookup_table:
+      res = self.lookup_table.lookup(tokens)
     else:
       raise ValueError
     return res
@@ -132,20 +132,23 @@ class PredefinedVocabWithEmbeddingBase(object):
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
+        #################3
+        if i ==10:
+          break
+        #################
         splits = line.split()
-        word = splits[0]
+        word = self.tokenizer(splits[0])[0]
         vector = splits[1:]
 
         if not embedding_dict:
           embedding_size = len(vector)
-          #default_embedding = np.zeros(embedding_size)
           default_embedding = [0.0 for _ in xrange(embedding_size)]
           embedding_dict = collections.defaultdict(lambda:default_embedding)
 
         assert len(splits) == embedding_size + 1
         embedding = [float(s) for s in vector]
-        #embedding = np.array([float(s) for s in vector])
-        embedding_dict[word] = embedding
+        if word not in embedding_dict:
+          embedding_dict[word] = embedding
       sys.stderr.write("Done loading word embeddings.\n")
     return embedding_dict
 
@@ -155,12 +158,15 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
                vocab_size=0,
                lowercase=False, normalize_digits=True, 
                normalize_embedding=False, add_bos=False, add_eos=False):
-    super(WordVocabularyWithEmbedding, self).__init__(add_bos=add_bos, 
-                                                      add_eos=add_eos)
-    self.tokenizer = get_word_tokenizer(lowercase=lowercase,
-                                        normalize_digits=normalize_digits)
+    
+    #super(WordVocabularyBase, self).__init__(add_bos=add_bos, add_eos=add_eos)
+    #super().__init__(add_bos=add_bos, add_eos=add_eos)
+    self.tokenizer = WordTokenizer(lowercase=lowercase,
+                                   normalize_digits=normalize_digits)
     self.normalize_embedding = normalize_embedding
     self.vocab, self.rev_vocab, self.embeddings = self.init_vocab(
       emb_configs, source_dir, vocab_size)
-    self.table = tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(self.vocab.keys(), self.vocab.values()), UNK_ID)
+    # For some reason "tf.contrib.lookup.HashTable" is not successfully imported when being run from jupyter.
+    self.lookup_table = tf.contrib.lookup.HashTable(
+      tf.contrib.lookup.KeyValueTensorInitializer(self.vocab.keys(), 
+                                                  self.vocab.values()), UNK_ID)

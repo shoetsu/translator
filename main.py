@@ -15,24 +15,23 @@ class Manager(object):
     self.sess = sess
     log_file = args.log_file if args.log_file else None
     self.logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
-
-    self.summaries_path = args.checkpoint_path + '/summaries'
-    self.checkpoints_path = args.checkpoint_path + '/checkpoints'
-    self.tests_path = args.checkpoint_path + '/tests'
+    self.model_path = args.checkpoint_path
+    self.summaries_path = self.model_path + '/summaries'
+    self.checkpoints_path = self.model_path + '/checkpoints'
+    self.tests_path = self.model_path + '/tests'
     self.mode = args.mode
     self.config_path = args.config_path
     self.config = config = self.get_config(args)
     if not args.interactive:
-      self.model = self.create_model(self.config)
       self.vocab = WordVocabularyWithEmbedding(config.embeddings, vocab_size=config.vocab_size, lowercase=config.lowercase)
-      dataset_type = getattr(datasets, config.dataset_type)
-      self.dataset = dataset_type(config.dataset_path, self.vocab)
-    #exit(1)
+      self.model = self.create_model(self.config, self.vocab)
+      #dataset_type = getattr(datasets, config.dataset_type)
+      #self.dataset = dataset_type(config.dataset_path, self.vocab)
 
   def get_config(self, args):
     # Read and restore config
     config = pyhocon.ConfigFactory.parse_file(self.config_path)
-    config_restored_path = os.path.join(args.checkpoint_path, 'config')
+    config_restored_path = os.path.join(self.model_path, 'config')
     if not os.path.exists(self.summaries_path):
       os.makedirs(self.summaries_path)
     if not os.path.exists(self.checkpoints_path):
@@ -50,8 +49,8 @@ class Manager(object):
   def train(self):
     pass
 
-  def create_model(self, config, checkpoint_path=None):
-    m = getattr(models, config.model_type)(self.sess, config)
+  def create_model(self, config, vocab, checkpoint_path=None):
+    m = getattr(models, config.model_type)(self.sess, config, vocab)
 
     if not checkpoint_path:
       ckpt = tf.train.get_checkpoint_state(self.checkpoints_path)
@@ -64,9 +63,9 @@ class Manager(object):
       self.saver.restore(self.sess, checkpoint_path)
     else:
       self.logger.info("Created model with fresh parameters.")
-      tf.global_variables_initializer().run()
+      self.sess.run(tf.global_variables_initializer())
 
-    variables_path = args.checkpoint_path + '/variables.list'
+    variables_path = self.model_path + '/variables.list'
     with open(variables_path, 'w') as f:
       variable_names = sorted([v.name + ' ' + str(v.get_shape()) for v in tf.global_variables()])
       f.write('\n'.join(variable_names) + '\n')
@@ -88,7 +87,7 @@ def main(args):
     )
   )
 
-  with tf.Graph().as_default(), tf.Session(config=tf_config) as sess:
+  with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
     tf.set_random_seed(0)
     manager = Manager(args, sess)
   return manager

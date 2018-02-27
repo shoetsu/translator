@@ -3,7 +3,6 @@ import tensorflow as tf
 import sys, re
 import pandas as pd
 from nltk.tokenize import sent_tokenize, word_tokenize
-from core.vocabularies import get_word_tokenizer
 class DatasetBase(object):
   pass
 
@@ -12,7 +11,7 @@ class PriceDataset(DatasetBase):
     data = pd.read_csv(path)
     self.vocab = vocab
     self.tokenizer = vocab.tokenizer
-    self.tokenizer = get_word_tokenizer(True, False)
+    #self.tokenizer = get_word_tokenizer(True, False)
     # For copying, keep unnormalized sentences too.
     self.texts = data['Text']
     self.values = data['Values']
@@ -22,7 +21,9 @@ class PriceDataset(DatasetBase):
     lowerbounds, l_equals, upperbounds, u_equals, currencies, rates = zip(*targets)
     self.targets = lowerbounds #upperbounds
 
+  @property
   def tensorized(self):
+    return (self.sources, self.targets)
     pass
   #   print self.sources[0]
   #   print 
