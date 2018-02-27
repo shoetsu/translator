@@ -15,3 +15,4 @@ nohup.out
 _trash
 results
 tmp.py
+*.ipynb
