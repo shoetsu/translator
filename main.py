@@ -1,4 +1,5 @@
 # coding:utf-8
+
 import sys, os, random, copy, collections, time, re, argparse
 import pyhocon
 import numpy as np
@@ -8,13 +9,17 @@ import tensorflow as tf
 
 from utils import common
 from core import models, datasets
-from core.vocabularies import WordVocabularyWithEmbedding
+from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
+
+#log_file = args.log_file if args.log_file else None
+
+log_file = None
+logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
+
 
 class Manager(object):
   def __init__(self, args, sess):
     self.sess = sess
-    log_file = args.log_file if args.log_file else None
-    self.logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
     self.model_path = args.checkpoint_path
     self.summaries_path = self.model_path + '/summaries'
     self.checkpoints_path = self.model_path + '/checkpoints'
@@ -25,8 +30,12 @@ class Manager(object):
     if not args.interactive:
       self.vocab = WordVocabularyWithEmbedding(config.embeddings, vocab_size=config.vocab_size, lowercase=config.lowercase)
       self.model = self.create_model(self.config, self.vocab)
-      #dataset_type = getattr(datasets, config.dataset_type)
-      #self.dataset = dataset_type(config.dataset_path, self.vocab)
+      dataset_type = getattr(datasets, config.dataset_type)
+      self.dataset = common.dotDict({
+        'train': dataset_type(config.dataset_path.train, self.vocab),
+        'test': dataset_type(config.dataset_path.test, self.vocab),
+      })
+      
 
   def get_config(self, args):
     # Read and restore config
@@ -46,8 +55,33 @@ class Manager(object):
         sys.stdout = sys.__stdout__
     return common.recDotDict(config)
 
+  @common.timewatch(logger)
   def train(self):
-    pass
+    config = self.config
+    checkpoint_path = self.checkpoints_path + '/model.ckpt'
+    for epoch in xrange(self.model.epoch.eval(), self.config.max_epoch):
+      train_batches = self.dataset.train.get_batch(config.batch_size, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=True)
+      test_batches = self.dataset.test.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
+
+      sys.stdout.write('Epoch %d \n' % (epoch))
+      loss = self.model.train(train_batches)
+      sys.stdout.write('Train loss: %.3f \n' % (loss))
+      #test_inputs, test_targets, predictions = self.model.test(test_batches)
+      predictions = self.model.test(test_batches)
+      sys.stdout = open(self.tests_path + '/test.%02d.txt' % epoch, 'w')
+      for j, (s, t) in enumerate(self.dataset.test.raw_data):
+        inp = ' '.join([x for x in s if x not in [_BOS, _PAD]])
+        out = ' '.join([x for x in t if x not in [_BOS, _PAD]])
+        pred =  [inp[k] for k in predictions[j] if k != 0]
+        pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
+        sys.stdout.write('Test input      %d:\t%s\n' % (j, inp))
+        sys.stdout.write('Test output     %d:\t%s\n' % (j, out))
+        sys.stdout.write('Test prediction %d:\t%s\n' % (j, pred))
+      sys.stdout = sys.__stdout__
+      self.model.add_epoch()
+      if epoch % 5 == 0:
+        self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
+    self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
 
   def create_model(self, config, vocab, checkpoint_path=None):
     m = getattr(models, config.model_type)(self.sess, config, vocab)
@@ -59,10 +93,10 @@ class Manager(object):
     self.saver = tf.train.Saver(tf.global_variables(), 
                                 max_to_keep=config.max_to_keep)
     if checkpoint_path and os.path.exists(checkpoint_path + '.index'):
-      self.logger.info("Reading model parameters from %s" % checkpoint_path)
+      logger.info("Reading model parameters from %s" % checkpoint_path)
       self.saver.restore(self.sess, checkpoint_path)
     else:
-      self.logger.info("Created model with fresh parameters.")
+      logger.info("Created model with fresh parameters.")
       self.sess.run(tf.global_variables_initializer())
 
     variables_path = self.model_path + '/variables.list'
@@ -90,6 +124,10 @@ def main(args):
   with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
     tf.set_random_seed(0)
     manager = Manager(args, sess)
+    if args.mode == 'train':
+      manager.train()
+    else:
+      pass
   return manager
 
 if __name__ == "__main__":

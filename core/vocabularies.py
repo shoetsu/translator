@@ -20,6 +20,7 @@ EOS_ID = 2
 UNK_ID = 3
 _DIGIT_RE = re.compile(r"\d")
 START_VOCAB = [_PAD, _BOS, _EOS, _UNK]
+UNDISPLAYED_TOKENS = [_PAD, _BOS, _EOS]
 
 def separate_numbers(sent):
   # for some reason nltk.tokenizer fails to separate numbers (e.g. 6.73you)
@@ -70,14 +71,19 @@ class VocabularyBase(object):
 
 class WordVocabularyBase(VocabularyBase):
   def id2token(self, _id):
-    if type(_id) != int or _id < 0 or _id > len(self.rev_vocab):
+    if not type(_id) in [int, np.int32]:
+      raise ValueError('ID must be an integer but %s' % str(type(_id)))
+    elif _id < 0 or _id > len(self.rev_vocab):
       raise ValueError('Token ID must be an integer between 0 and %d (ID=%d)' % (len(self.rev_vocab), _id))
     elif _id in set([PAD_ID, EOS_ID, BOS_ID]):
       return None
     else:
       return self.rev_vocab[_id]
 
-  def ids2tokens(self, ids, link_span=None):
+  def idx2tokens(self, idxs, refer_tokens):
+    return [refer_tokens[i] for i in idxs if refer_tokens[i] and refer_tokens[i] not in UNDISPLAYED_TOKENS]
+
+  def ids2tokens(self, ids, link_span=None, join=False):
     '''
     ids: a list of word-ids.
     link_span : a tuple of the indices between the start and the end of a link.
@@ -87,8 +93,10 @@ class WordVocabularyBase(VocabularyBase):
       if link_span:
         for i in xrange(link_span[0], link_span[1]+1):
           sent_tokens[i] = common.colored(sent_tokens[i], 'link')
-      sent_tokens = [w for w in sent_tokens if w]
-      return " ".join(sent_tokens)
+      sent_tokens = [w for w in sent_tokens if w and w not in UNDISPLAYED_TOKENS]
+      if join:
+        sent_tokens = " ".join(sent_tokens)
+      return sent_tokens
     return _ids2tokens(ids, link_span)
 
   def token2id(self, token):
@@ -133,7 +141,7 @@ class PredefinedVocabWithEmbeddingBase(object):
         if skip_first and i == 0:
           continue
         #################3
-        if i ==10:
+        if False and i ==100 :
           break
         #################
         splits = line.split()

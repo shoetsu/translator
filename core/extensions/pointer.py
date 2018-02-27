@@ -37,9 +37,12 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope as vs
 
-from tensorflow.python.ops.rnn_cell_impl import _linear
+#try:
+#  from tensorflow.python.ops.rnn_cell_impl import _linear
+#except:
+#  from tensorflow.contrib.rnn.python.ops.rnn_cell import _linear
 
-from utils.tf_utils import shape
+from utils.tf_utils import shape, _linear
 
 def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state, 
                     attention_states, cell,
