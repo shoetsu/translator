@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 #from __future__ import print_function
 
+import sys 
 from six.moves import xrange # pylint: disable=redefined-builtin
 
 import tensorflow as tf
@@ -47,9 +48,9 @@ from utils.tf_utils import shape, _linear
 def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state, 
                     attention_states, cell,
                     feed_prev=True, dtype=dtypes.float32, scope=None):
-  print 'encoder_inputs',encoder_inputs_emb
-  print 'decoder_inputs', decoder_inputs
-  print 'attention_states', attention_states
+  #print 'encoder_inputs',encoder_inputs_emb
+  #print 'decoder_inputs', decoder_inputs
+  #print 'attention_states', attention_states
   encoder_inputs = encoder_inputs_emb
   #attn_length = attention_states.get_shape()[1].value
   #attn_size = attention_states.get_shape()[2].value
@@ -60,8 +61,8 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
   attnv = tf.get_variable("AttnV", [attn_size])
 
   def attention_weight(output):
-    print 'attention_states', attention_states
-    print 'output', output
+    #print 'attention_states', attention_states
+    #print 'output', output
     y = _linear(output, attn_size, True)
     y = tf.reshape(y, [-1, 1, attn_size])
     attention_vectors = tf.nn.softmax(tf.reduce_sum(attnv * tf.tanh(y + attention_states), axis=2))
@@ -74,7 +75,7 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
   for i, d in enumerate(tf.unstack(decoder_inputs, axis=1)):
   #for i in tf.range(0, shape(decoder_inputs, 1)):
     #d = decoder_inputs[i]
-    print 'i=%d'%i
+    #print 'i=%d'%i
     if i > 0:
       tf.get_variable_scope().reuse_variables()
     pointed_idx = d
@@ -82,14 +83,17 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
     if feed_prev and i > 0:
       # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
       pointed_idx =  tf.argmax(output, axis=1)
-        
+      
     pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
     inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
-    print 'pointed_idx',pointed_idx
-    print 'next_inp', inp
+    inp = tf.stop_gradient(inp)
+    #print 'pointed_idx',pointed_idx
+    #print 'next_inp', inp
+    #sys.stdout=sys.stderr
+    #print i, inp, states[-1]
     output, state = cell(inp, states[-1])
     output = attention_weight(output)
-    print 'output', output
+    #print 'output', output
     inputs.append(inp)
     states.append(state)
     outputs.append(output)

@@ -7,38 +7,43 @@ from pprint import pprint
 from logging import FileHandler
 import tensorflow as tf
 
-from utils import common
+from utils import common, evaluation
 from core import models, datasets
 from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
 
 #log_file = args.log_file if args.log_file else None
 
-log_file = None
-logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
-
+#log_file = None
+#logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
+#logger = common.logManager()
 
 class Manager(object):
+  @common.timewatch()
   def __init__(self, args, sess):
     self.sess = sess
+    self.config = config = self.get_config(args)
+    self.mode = args.mode
+    self.logger = common.logManager(handler=FileHandler(args.log_file)) if args.log_file else common.logManager()
+
+    sys.stderr.write(str(self.config) + '\n')
+    self.dataset_type = getattr(datasets, config.dataset_type)
+    if not args.interactive:
+      self.vocab = WordVocabularyWithEmbedding(config.embeddings, 
+                                               vocab_size=config.vocab_size, 
+                                               lowercase=config.lowercase)
+      # Lazy loading.
+      self.dataset = common.dotDict({'train': None, 'valid':None, 'test': None})
+
+  def get_config(self, args):
+
     self.model_path = args.checkpoint_path
     self.summaries_path = self.model_path + '/summaries'
     self.checkpoints_path = self.model_path + '/checkpoints'
     self.tests_path = self.model_path + '/tests'
-    self.mode = args.mode
-    self.config_path = args.config_path
-    self.config = config = self.get_config(args)
-    if not args.interactive:
-      self.vocab = WordVocabularyWithEmbedding(config.embeddings, vocab_size=config.vocab_size, lowercase=config.lowercase)
-      self.model = self.create_model(self.config, self.vocab)
-      dataset_type = getattr(datasets, config.dataset_type)
-      self.dataset = common.dotDict({
-        'train': dataset_type(config.dataset_path.train, self.vocab),
-        'test': dataset_type(config.dataset_path.test, self.vocab),
-      })
-      
+    self.config_path = args.config_path if args.config_path else self.model_path + '/config'
 
-  def get_config(self, args):
     # Read and restore config
+    sys.stderr.write('Reading a config from %s ...\n' % (self.config_path))
     config = pyhocon.ConfigFactory.parse_file(self.config_path)
     config_restored_path = os.path.join(self.model_path, 'config')
     if not os.path.exists(self.summaries_path):
@@ -49,76 +54,130 @@ class Manager(object):
       os.makedirs(self.tests_path)
 
     if args.cleanup or not os.path.exists(config_restored_path):
+      sys.stderr.write('Restore the config to %s ...\n' % (config_restored_path))
+
       with open(config_restored_path, 'w') as f:
         sys.stdout = f
         common.print_config(config)
         sys.stdout = sys.__stdout__
     return common.recDotDict(config)
 
-  @common.timewatch(logger)
-  def train(self):
-    config = self.config
+  def save_model(self, model, save_as_best=False):
     checkpoint_path = self.checkpoints_path + '/model.ckpt'
-    for epoch in xrange(self.model.epoch.eval(), self.config.max_epoch):
-      train_batches = self.dataset.train.get_batch(config.batch_size, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=True)
-      test_batches = self.dataset.test.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
+    self.saver.save(self.sess, checkpoint_path, global_step=model.epoch)
+    if save_as_best:
+      suffixes = ['data-00000-of-00001', 'index', 'meta']
+      for s in suffixes:
+        source_path = self.checkpoints_path + "/model.ckpt-%d.%s" % (model.epoch.eval(), s)
+        target_path = self.checkpoints_path + "/model.ckpt.best.%s" % (s)
+        cmd = "cp %s %s" % (source_path, target_path)
+        os.system(cmd)
 
-      sys.stdout.write('Epoch %d \n' % (epoch))
-      loss = self.model.train(train_batches)
-      sys.stdout.write('Train loss: %.3f \n' % (loss))
+  @common.timewatch()
+  def train(self):
+    model = self.create_model(self.sess, self.config, self.vocab, 
+                              cleanup=args.cleanup)
+    self.dataset.train = self.dataset_type(
+      self.config.dataset_path.train, self.vocab,
+      num_train_data=self.config.num_train_data)
+    self.dataset.test = self.dataset_type(
+      self.config.dataset_path.test, self.vocab)
 
-      predictions = self.model.test(test_batches)
-      sys.stdout = open(self.tests_path + '/test.%02d.txt' % epoch, 'w')
-      test_inputs_tokens, _ = self.dataset.test.symbolized
-      for j, (s, t) in enumerate(zip(*self.dataset.test.raw_data)):
-        token_inp = self.vocab.ids2tokens(test_inputs_tokens[j], join=True)
-        inp = ' '.join([x for x in s if x not in [_BOS, _PAD]])
-        out = ' '.join([x for x in t if x not in [_BOS, _PAD]])
-        pred =  [s[k] for k in predictions[j] if k != 0]
-        pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
-        sys.stdout.write('Test input       %d:\t%s\n' % (j, inp))
-        sys.stdout.write('Test input (unk) %d:\t%s\n' % (j, token_inp))
-        sys.stdout.write('Test output      %d:\t%s\n' % (j, out))
-        sys.stdout.write('Test prediction  %d:\t%s\n' % (j, pred))
-      sys.stdout = sys.__stdout__
-      self.model.add_epoch()
-      if epoch % 5 == 0:
-        self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
-    self.saver.save(self.sess, checkpoint_path, global_step=self.model.epoch)
-
-
-  @common.timewatch(logger)
-  def test(self):
     config = self.config
-    test_batches = self.dataset.test.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
-    predictions = self.model.test(test_batches)
+    testing_results = []
+    for epoch in xrange(model.epoch.eval(), self.config.max_epoch):
+      train_batches = self.dataset.train.get_batch(
+        config.batch_size, input_max_len=config.input_max_len, 
+        output_max_len=config.output_max_len, shuffle=True)
 
-    for j, (s, t) in enumerate(zip(*self.dataset.test.raw_data)):
-      token_inp = self.vocab.ids2tokens(test_inputs_tokens[j], join=True)
-      inp = ' '.join([x for x in s if x not in [_BOS, _PAD]])
-      out = ' '.join([x for x in t if x not in [_BOS, _PAD]])
-      pred =  [s[k] for k in predictions[j] if k != 0]
-      pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
-      sys.stdout.write('Test input       %d:\t%s\n' % (j, inp))
-      sys.stdout.write('Test input (unk) %d:\t%s\n' % (j, token_inp))
-      sys.stdout.write('Test output      %d:\t%s\n' % (j, out))
-      sys.stdout.write('Test prediction  %d:\t%s\n' % (j, pred))
+      loss, epoch_time = model.train(train_batches)
 
-  def create_model(self, config, vocab, checkpoint_path=None):
-    m = getattr(models, config.model_type)(self.sess, config, vocab)
+      self.logger.info('(Epoch %d) Train loss: %.3f (%.1f sec)' % (epoch, loss, epoch_time))
+      df = self.test(model=model, dataset=self.dataset.test)
+      average_accuracy = np.mean(df.values.tolist()[0])
+      if epoch == 0 or average_accuracy > max(testing_results):
+        save_as_best = True
+        best_epoch = epoch
+        best_result = average_accuracy
+        self.logger.info('(Epoch %d) Highest accuracy: %.3f' % (best_epoch, best_result))
+      else:
+        save_as_best = False
+      testing_results.append(average_accuracy)
+      self.save_model(model, save_as_best=save_as_best)
+      model.add_epoch()
+    self.test()
 
-    if not checkpoint_path:
+  def debug(self):
+    config = self.config
+    batches = self.dataset.train.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
+    model.debug(batches)
+
+  def demo(self, model=None, inp=None):
+    if model is None:
+      model = self.create_model(
+        self.sess, self.config, self.vocab, 
+        checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
+    dataset = self.dataset_type(
+      self.config.dataset_path.test, self.vocab)
+    while True:
+      if not inp:
+        sys.stdout.write('Input: ')
+        inp = sys.stdin.readline().replace('\n', '')
+      inp_origin = [_BOS] + self.vocab.tokenizer(inp, normalize_digits=False)
+      inp_normalized = [_BOS] + self.vocab.tokenizer(inp)
+      batch = dataset.create_demo_batch(inp_normalized, 
+                                        self.config.output_max_len)
+      predictions = model.test(batch)
+      inp, _, pred = dataset.ids_to_tokens(inp_origin, None, predictions[0])
+      sys.stdout.write("Source:\t%s\n" % ' '.join(inp))
+      sys.stdout.write("Target:\t%s\n" % ' | '.join(pred))
+      break
+      #inp = None
+
+  def test(self, model=None, dataset=None, verbose=True):
+    if model is None:
+      model = self.create_model(
+        self.sess, self.config, self.vocab, 
+        checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
+      test_path = self.tests_path + '/test.best.txt'
+    else:
+      test_path = self.tests_path + '/test.%02d.txt' % model.epoch.eval()
+
+    config = self.config
+    if dataset is None:
+      if self.dataset.test is None:
+        self.dataset.test = self.dataset_type(
+          self.config.dataset_path.test, self.vocab)
+      dataset = self.dataset.test
+    batches = dataset.get_batch(
+      1, input_max_len=None, 
+      output_max_len=config.output_max_len, shuffle=False)
+    predictions = model.test(batches)
+    epoch = model.epoch.eval()
+    with open(test_path, 'w') as f:
+      sys.stdout = f 
+      df = dataset.show_results(predictions, verbose=verbose)
+      sys.stdout = sys.__stdout__
+    return df
+
+  @common.timewatch()
+  def create_model(self, sess, config, vocab, 
+                   checkpoint_path=None, cleanup=False):
+    with tf.variable_scope('', reuse=tf.AUTO_REUSE):
+      m = getattr(models, config.model_type)(sess, config, vocab)
+
+    if not checkpoint_path and not cleanup:
       ckpt = tf.train.get_checkpoint_state(self.checkpoints_path)
       checkpoint_path = ckpt.model_checkpoint_path if ckpt else None
 
-    self.saver = tf.train.Saver(tf.global_variables(), 
-                                max_to_keep=config.max_to_keep)
+    self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
+                                #max_to_keep=config.max_to_keep)
     if checkpoint_path and os.path.exists(checkpoint_path + '.index'):
-      logger.info("Reading model parameters from %s" % checkpoint_path)
-      self.saver.restore(self.sess, checkpoint_path)
+      sys.stderr.write("Reading model parameters from %s\n" % checkpoint_path)
+      self.saver.restore(sess, checkpoint_path)
     else:
-      logger.info("Created model with fresh parameters.")
-      self.sess.run(tf.global_variables_initializer())
+      sys.stderr.write("Created model with fresh parameters.\n")
+      sess.run(tf.global_variables_initializer())
 
     variables_path = self.model_path + '/variables.list'
     with open(variables_path, 'w') as f:
@@ -126,7 +185,7 @@ class Manager(object):
       f.write('\n'.join(variable_names) + '\n')
 
     self.summary_writer = tf.summary.FileWriter(self.summaries_path, 
-                                                self.sess.graph)
+                                                sess.graph)
     self.reuse = True
     return m
 
@@ -149,8 +208,12 @@ def main(args):
       manager.train()
     elif args.mode == 'test':
       manager.test()
+    elif args.mode == 'demo':
+      manager.demo()
+    elif args.mode == 'debug':
+      manager.debug()
     else:
-      pass
+      raise ValueError('args.mode must be \'train\', \'test\', or \'demo\'.')
   return manager
 
 if __name__ == "__main__":

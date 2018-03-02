@@ -53,7 +53,6 @@ class WordTokenizer(object):
       sent = sent.lower()
     return word_tokenize(sent)
 
-
 class VocabularyBase(object):
   def __init__(self, add_bos=False, add_eos=False):
     self.vocab = None
@@ -144,19 +143,24 @@ class PredefinedVocabWithEmbeddingBase(object):
         if skip_first and i == 0:
           continue
         #################3
-        if False and i ==100 :
+        #if False and i ==100 :
+        if False and i==2000:
           break
         #################
-        splits = line.split()
-        word = self.tokenizer(splits[0])[0]
-        vector = splits[1:]
+        word_and_embedding = line.split()
+        word = self.tokenizer(word_and_embedding[0])
+        if len(word) > 1:
+          continue
+        else:
+          word = word[0]
+        vector = word_and_embedding[1:]
 
         if not embedding_dict:
           embedding_size = len(vector)
           default_embedding = [0.0 for _ in xrange(embedding_size)]
           embedding_dict = collections.defaultdict(lambda:default_embedding)
+          assert len(word_and_embedding) == embedding_size + 1
 
-        assert len(splits) == embedding_size + 1
         embedding = [float(s) for s in vector]
         if word not in embedding_dict:
           embedding_dict[word] = embedding

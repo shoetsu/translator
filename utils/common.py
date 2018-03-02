@@ -10,6 +10,9 @@ try:
 except:
   import pickle
 
+def transpose(l):
+  return list(zip(*l))
+
 def read_textfile(lines):
   # lines: list of str, file object, or rows of DataFrame.
   return [" ".join(tokenize_heuristics(l).replace('\n', '').strip().split()).lower() for l in lines]

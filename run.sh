@@ -21,20 +21,17 @@ config_file=config
 log_file=$checkpoint_path/${mode}.log
 
 if [ "${config_path}" = "" ]; then
-    if [[ "${mode}" =~ "train" ]]; then
-	if [ -e ${checkpoint_path}/${config_file} ]; then
-	    config_path=${checkpoint_path}/${config_file}
-	else
-	    config_path=configs/config
-	    #echo "specify config file when start training from scratch."
-	    #exit 1
-	fi
-    else
-	if [ "${config_path}" != "" ]; then
-	    echo "The configuration of trained models is not overwritten."
-	fi
+    if [ -e ${checkpoint_path}/${config_file} ]; then
 	config_path=${checkpoint_path}/${config_file}
+    else
+	config_path=configs/config
+	#echo "specify config file when start training from scratch."
+	#exit 1
     fi
+# else
+#     if [ -e ${checkpoint_path}/${config_file} ]; then
+# 	config_path=${checkpoint_path}/${config_file}
+#     fi
 fi
 
 # 実行時オプションを優先(from manually_optget.sh)

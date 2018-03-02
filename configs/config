@@ -1,31 +1,40 @@
 # Text processing.
 input_max_len = 30
-output_max_len = 4
+output_max_len = 5
 #vocab_size = 30000
 vocab_size = 0
-lowercase=True
+lowercase=true
+num_columns=4
+num_train_data=0
 
 # Training.
 batch_size=10
 max_to_keep = 10
-max_epoch = 50
+max_epoch = 30
 max_gradient_norm = 5.0
 learning_rate = 0.001
 decay_rate = 0.999
+#decay_rate = 0.9
 decay_frequency = 100
 dropout_rate=0.2
+train_embedding=true
 
 # Structure.
 num_layers=1
 hidden_size = 50
+rnn_size=${hidden_size}
+rnn_type=dynamic_rnn
+#rnn_type=bidirectional_dynamic_rnn
 #cell_type=BasicLSTMCell
 cell_type=GRUCell
 model_type=PointerNetwork
 
 dataset_type=PriceDataset
 dataset_path {
-  train = dataset/train.annotated.csv
   test = dataset/test.annotated.csv
+  #train = dataset/weak_label_9800_sep.csv
+  #train = dataset/train.annotated.csv
+  train = dataset/mixed.train.csv
 }
 
 #Pretrained embeddings.
