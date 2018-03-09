@@ -126,11 +126,11 @@ class WordVocabularyBase(VocabularyBase):
 
 
 class PredefinedVocabWithEmbeddingBase(object):
-  def init_vocab(self, emb_configs, source_dir, vocab_size=0):
+  def init_vocab(self, emb_configs, vocab_size=0):
     start_vocab = START_VOCAB
     # if self.tokenizer.lowercase:
     #   start_vocab = [x.lower for x in lowercase]
-    pretrained = [self.load_vocab(os.path.join(source_dir, c['path']), c['format'] == 'vec') for c in emb_configs]
+    pretrained = [self.load_vocab(c['path'], c['format'] == 'vec') for c in emb_configs]
     rev_vocab = common.flatten([e.keys() for e in pretrained])
     rev_vocab = OrderedSet(start_vocab + [self.tokenizer(w, flatten=True)[0] 
                                           for w in rev_vocab])
@@ -180,19 +180,14 @@ class PredefinedVocabWithEmbeddingBase(object):
 
 
 class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddingBase):
-  def __init__(self, emb_configs, source_dir="dataset/embeddings",
-               vocab_size=0,
-               lowercase=False, normalize_digits=True, 
+  def __init__(self, emb_configs,
+               vocab_size=0, lowercase=False, normalize_digits=True, 
                normalize_embedding=False, add_bos=False, add_eos=False):
-    
-    #super(WordVocabularyBase, self).__init__(add_bos=add_bos, add_eos=add_eos)
-    #super().__init__(add_bos=add_bos, add_eos=add_eos)
     self.tokenizer = WordTokenizer(lowercase=lowercase,
                                    normalize_digits=normalize_digits)
     self.normalize_embedding = normalize_embedding
     self.vocab, self.rev_vocab, self.embeddings = self.init_vocab(
-      emb_configs, source_dir, vocab_size)
-    # For some reason "tf.contrib.lookup.HashTable" is not successfully imported when being run from jupyter.
+      emb_configs, vocab_size)
 
   @property
   def lookup_table(self):

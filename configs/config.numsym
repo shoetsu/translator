@@ -28,8 +28,8 @@ rnn_type=bidirectional_dynamic_rnn
 #cell_type=BasicLSTMCell
 cell_type=GRUCell
 model_type=PointerNetwork
-#dataset_type=NumSymbolizePriceDataset
-dataset_type=PriceDataset
+dataset_type=NumSymbolizePriceDataset
+#dataset_type=PriceDataset
 
 dataset_path {
   test = dataset/test.annotated.csv
