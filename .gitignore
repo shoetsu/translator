@@ -1,6 +1,5 @@
 .python-version
 *.pyc
-*.txt
 _bak
 \#*
 ._*
@@ -8,7 +7,6 @@ _bak
 .#*
 .fuse*
 *.gz*
-*.txt*
 tmp
 *~
 nohup.out

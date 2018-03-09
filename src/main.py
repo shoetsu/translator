@@ -119,7 +119,7 @@ class Manager(object):
         save_as_best = True
         best_epoch = epoch
         best_result = average_accuracy
-        self.logger.info('(Epoch %d) Highest accuracy: %.3f' % (best_epoch, best_result))
+        self.logger.info('(Epoch %d) Update highest accuracy: %.3f' % (best_epoch, best_result))
       else:
         save_as_best = False
       testing_results.append(average_accuracy)
@@ -157,7 +157,7 @@ class Manager(object):
 
   def test(self, model=None, dataset=None, verbose=True):
     config = self.config
-
+                  
     if dataset is None:
       if self.dataset.test is None:
         self.dataset.test = self.dataset_type(

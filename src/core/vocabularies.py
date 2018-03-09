@@ -203,3 +203,17 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
       self.embeddings = np.concatenate(
         (self.embeddings, new_embedding)
       )
+
+
+class FeatureVocab(WordVocabularyBase):
+  def __init__(self, rev_vocab):
+    self.vocab, self.rev_vocab = self.init_vocab(rev_vocab)
+
+  def init_vocab(self, rev_vocab):
+    start_vocab = START_VOCAB
+    rev_vocab = OrderedSet(start_vocab + rev_vocab) 
+    vocab = collections.OrderedDict()
+    for i,t in enumerate(rev_vocab):
+      vocab[t] = i
+    return vocab, rev_vocab
+

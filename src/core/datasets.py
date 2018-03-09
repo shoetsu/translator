@@ -281,3 +281,7 @@ class NumSymbolizePriceDataset(PriceDataset):
       num_indices.append(idx)
     return sources, targets, num_indices
 
+
+class PriceDatasetWithFeatures(PriceDataset):
+  def __init__(self, path, vocab, num_train_data=0):
+    PriceDataset.__init__(self, path, vocab, num_train_data=num_train_data)
