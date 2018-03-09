@@ -76,15 +76,15 @@ class WordVocabularyBase(VocabularyBase):
       raise ValueError('ID must be an integer but %s' % str(type(_id)))
     elif _id < 0 or _id > len(self.rev_vocab):
       raise ValueError('Token ID must be an integer between 0 and %d (ID=%d)' % (len(self.rev_vocab), _id))
-    elif _id in set([PAD_ID, EOS_ID, BOS_ID]):
-      return None
+    # elif _id in set([PAD_ID, EOS_ID, BOS_ID]):
+    #   return None
     else:
       return self.rev_vocab[_id]
 
   def idx2tokens(self, idxs, refer_tokens):
     return [refer_tokens[i] for i in idxs if refer_tokens[i] and refer_tokens[i] not in UNDISPLAYED_TOKENS]
 
-  def ids2tokens(self, ids, link_span=None, join=False):
+  def ids2tokens(self, ids, link_span=None, join=False, remove_special=True):
     '''
     ids: a list of word-ids.
     link_span : a tuple of the indices between the start and the end of a link.
@@ -94,16 +94,24 @@ class WordVocabularyBase(VocabularyBase):
       if link_span:
         for i in xrange(link_span[0], link_span[1]+1):
           sent_tokens[i] = common.colored(sent_tokens[i], 'link')
-      sent_tokens = [w for w in sent_tokens if w and w not in UNDISPLAYED_TOKENS]
+      if remove_special:
+        sent_tokens = [w for w in sent_tokens 
+                       if w and w not in UNDISPLAYED_TOKENS]
       if join:
         sent_tokens = " ".join(sent_tokens)
       return sent_tokens
     return _ids2tokens(ids, link_span)
 
   def token2id(self, token):
+    # token: a string.
+    # res: an interger.
+
     return self.vocab.get(token, UNK_ID)
 
   def str2ids(self, sentence):
+    # sentence : a string.
+    # res :a list of integer.
+
     tokens = self.tokenizer(sentence) 
     return [self.token2id(word) for word in tokens]
 

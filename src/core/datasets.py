@@ -37,6 +37,7 @@ class PriceDataset(DatasetBase):
     self.tokenizer = vocab.tokenizer
 
     text_data = data['sentence']
+
     # For copying, keep unnormalized sentences too.
     self.original_sources = [[_BOS] + self.tokenizer(l, normalize_digits=False) for l in text_data]
     self.indexs = data['index'].values
@@ -62,18 +63,20 @@ class PriceDataset(DatasetBase):
     targets = [tf.keras.preprocessing.sequence.pad_sequences(targets_by_column, maxlen=output_max_len, padding='post', truncating='post', value=PAD_ID) for targets_by_column in targets]
     targets = list(zip(*targets)) # to idx-major. (for shuffling)
 
-    data = [(s,t) for s,t in zip(sources, targets)]
+    data = [tuple(x) for x in zip(sources, targets, self.original_sources, self.targets)]
 
     if shuffle:
       random.shuffle(data)
     for i, b in itertools.groupby(enumerate(data), 
                                   lambda x: x[0] // (batch_size)):
       batch = [x[1] for x in b]
-      b_sources, b_targets = zip(*batch)
+      b_sources, b_targets, b_ori_sources, b_ori_targets = zip(*batch)
       b_targets = list(zip(*b_targets)) # to column-major.
       yield common.dotDict({
         'sources': np.array(b_sources),
         'targets': [np.array(t) for t in b_targets],
+        'original_sources': b_ori_sources,
+        'original_targets': b_ori_targets,
       })
   
   def create_demo_batch(self, text, output_max_len):
@@ -95,8 +98,6 @@ class PriceDataset(DatasetBase):
   @property
   def symbolized(self):
     # Find the indice of the tokens in a source sentence which was copied as a target label.
-    print 'aaa'
-    exit(1)
     targets = [[[o.index(x) for x in tt if x != self.NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
     #targets = list(zip(*targets))
     sources = [self.vocab.tokens2ids(s) for s in self.sources]
@@ -115,7 +116,7 @@ class PriceDataset(DatasetBase):
 
   def show_results(self, original_sources, targets, predictions, 
                    verbose=True, prediction_is_index=True, 
-                   target_path_prefix=None, used_conditions=None):
+                   target_path_prefix=None, output_types=None):
     test_inputs_tokens, _ = self.symbolized
     golds = []
     preds = []
@@ -154,8 +155,8 @@ class PriceDataset(DatasetBase):
       ('less', (lambda g: g[0] == '-' and g[1] != '-', lower_upper_success)),
       ('more', (lambda g: g[0] != '-' and g[1] == '-', lower_upper_success)),
     ]
-    if used_conditions is not None:
-      conditions = [c for c in conditions if c[0] in used_conditions]
+    if output_types is not None:
+      conditions = [c for c in conditions if c[0] in output_types]
 
     dfs = []
     summaries = []
@@ -169,6 +170,13 @@ class PriceDataset(DatasetBase):
     return dfs[0], summaries[0]
 
   def summarize(self, inputs, token_inputs, _golds, _preds, cf):
+    '''
+    inputs: 2D array of string in original sources. [len(data), max_source_length]
+    token_inputs: 2D array of string. Tokens not in the vocabulary are converted into _UNK. [len(data), max_source_length]
+    _golds: 2D array of string. [len(data), num_columns]
+    _preds: 2D array of string. [len(data), num_columns]
+    cf: Tuple of two functions. cf[0] is for the condition whether it includes a line of test into the summary, and cf[1] is to decide whether a pair of tuple (gold, prediction) for a line of testing is successful of not. 
+    '''
     golds, preds = [], []
     for i, (inp, token_inp, g, p) in enumerate(zip(inputs, token_inputs, _golds, _preds)):
       if not cf[0](g):
@@ -192,6 +200,7 @@ class PriceDataset(DatasetBase):
 
     df = pd.DataFrame(res)
     df = df.ix[:,['Metrics'] + self.targets_name].set_index('Metrics')
+
     # Make summary for Tensorboard.
     column_names = [x for x in df]
     row_names = [x for x in df.index]
@@ -205,16 +214,6 @@ class PriceDataset(DatasetBase):
     print df
 
     return df, summary
-
-  # def summarize_all(self, inputs, token_inputs, golds, preds, cond_func):
-  #   with open()
-  #   succ_or_fail = 'EM_Success' if gold == pred else "EM_Failure"
-  #   if verbose:
-  #     sys.stdout.write('<%d> (%s)\n' % (i, succ_or_fail))
-  #     sys.stdout.write('Test input       :\t%s\n' % (' '.join(inp)))
-  #     sys.stdout.write('Test input (unk) :\t%s\n' % (' '.join(token_inp)))
-  #     sys.stdout.write('Human label      :\t%s\n' % (' | '.join(gold)))
-  #     sys.stdout.write('Test prediction  :\t%s\n' % (' | '.join(pred)))
 
   def ids_to_tokens(self, s_tokens, t_tokens, p_idxs):
     outs = []
@@ -248,25 +247,16 @@ class NumSymbolizePriceDataset(PriceDataset):
   def symbolized(self):
     # Find the indice of the tokens in a source sentence which was copied as a target label.
     targets = [[[o.index(x) for x in tt if x != self.NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
-    #targets = list(zip(*targets))
     sources = [self.vocab.tokens2ids([x if i not in idx else _NUM for i, x in enumerate(s)]) for s, idx in zip(self.sources, self.num_indices)]
-    # #return list(zip(sources, targets))
-    # for s, t, ss, tt in zip(sources, targets, self.sources, self.targets):
-    #   print '----------------------------'
-    #   print s
-    #   print t
-    #   print ss
-    #   print tt
-    # exit(1)
     return sources, targets
 
-    pass
-
   def concat_numbers(self, _sources, _targets, _pos):
+    # Concatenate consecutive CDs in sources and targets by '|'.
+    # num_indices shows the concatenated tokens and they will be normalized into '_NUM' when symbolizing.
+    delim = '|'
     sources = []
     targets = []
     num_indices = []
-    delim = '|'
     for s, t, p in zip(_sources, _targets, _pos):
       assert len(s) == len(p)
       new_s = []
@@ -289,9 +279,5 @@ class NumSymbolizePriceDataset(PriceDataset):
       sources.append(new_s)
       targets.append(new_t)
       num_indices.append(idx)
-      # print '-------------------'
-      # print new_s
-      # print new_t
-      # print idx
     return sources, targets, num_indices
 

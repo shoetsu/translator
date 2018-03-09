@@ -34,14 +34,13 @@ class Manager(object):
     # Lazy loading.
     self.dataset = common.dotDict({'train': None, 'valid':None, 'test': None})
     self.dataset_type = getattr(datasets, config.dataset_type)
-    if not args.interactive:
+    if not args.interactive: # For saving time when running in jupyter.
       self.vocab = WordVocabularyWithEmbedding(
         config.embeddings, 
         vocab_size=config.vocab_size, 
         lowercase=config.lowercase) if vocab is None else vocab
 
   def get_config(self, args):
-
     self.model_path = args.checkpoint_path
     self.summaries_path = self.model_path + '/summaries'
     self.checkpoints_path = self.model_path + '/checkpoints'
@@ -74,6 +73,8 @@ class Manager(object):
     # Override configs by temporary args.
     if args.test_data_path:
       config.dataset_path.test = args.test_data_path
+    if args.batch_size:
+      config.batch_size = args.batch_size
     config.debug = args.debug
     return config
 
@@ -171,10 +172,10 @@ class Manager(object):
           self.sess, self.config, self.vocab, 
           checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
         test_filename = '%s.best' % (test_filename)
-        used_conditions = None
+        output_types = None
     else:
       test_filename = '%s.%02d' % (test_filename, model.epoch.eval())
-      used_conditions = ['all']
+      output_types= ['all']
 
     batches = dataset.get_batch(
       1, input_max_len=None, 
@@ -187,7 +188,7 @@ class Manager(object):
     df, summary = dataset.show_results(sources, targets, predictions, 
                                        verbose=verbose, 
                                        target_path_prefix=test_output_path,
-                                       used_conditions=used_conditions)
+                                       output_types=output_types)
     if summary is not None:
       self.summary_writer.add_summary(summary, model.epoch.eval())
     return df
@@ -272,11 +273,11 @@ if __name__ == "__main__":
   
   parser.add_argument("--debug", default=False, type=common.str2bool)
   parser.add_argument("--cleanup", default=False, type=common.str2bool)
-  parser.add_argument("--log_file", default=None, type=str)
   parser.add_argument("--interactive", default=False, type=common.str2bool)
+  parser.add_argument("--log_file", default=None, type=str)
   parser.add_argument("--test_data_path", default=None, type=str)
-  parser.add_argument("--evaluate_data_path", default='dataset/baseline.complicated.csv', 
-                      type=str)
+  parser.add_argument("--evaluate_data_path", default='dataset/baseline.complicated.csv', type=str)
+  parser.add_argument("--batch_size", default=None, type=int)
   args  = parser.parse_args()
   main(args)
 

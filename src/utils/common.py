@@ -46,7 +46,6 @@ def restore_to_tmpfile(sentences, tmp_dir='/tmp'):
   return tmp_filepath
 
 def get_pos(sents, output_path=None):
-  TAGGER_DIR = '/home/shoetsu/downloads/stanford-postagger'
   suffix = '.pos'
   output_path = output_path + suffix
   if output_path and os.path.exists(output_path):
@@ -54,7 +53,7 @@ def get_pos(sents, output_path=None):
     pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (output_path)).split('\n\n')]
   else:
     sys.stderr.write("Runnning POS Tagger...\n")
-    tmp_filepath = restore_to_tmpfile(sents, tmp_dir='/tmp/shoetsu/tmp')
+    tmp_filepath = restore_to_tmpfile(sents, tmp_dir='/tmp')
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                'scripts/stanford-postagger.sh')
     cmd = "%s %s 4g" % (script_path, tmp_filepath) 
@@ -64,6 +63,7 @@ def get_pos(sents, output_path=None):
       sys.stderr.write("Restoring to \'%s\' ...  \n" % output_path)
       os.system('cp %s %s' % (tmp_filepath + suffix, output_path))
     os.system('rm %s' % (tmp_filepath))
+    os.system('rm %s%s' % (tmp_filepath, suffix))
   return pos_tags
 
 def str2tuple(v):

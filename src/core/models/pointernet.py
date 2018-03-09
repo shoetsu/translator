@@ -55,7 +55,7 @@ class PointerNetwork(ModelBase):
     # The input word ids.
     self.e_inputs_ph = tf.placeholder(
       tf.int32, [None, input_max_len], name="EncoderInput")
-    self.batch_size = shape(self.e_inputs_ph, 0)
+    batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
       self.w_embeddings = self.initialize_embeddings(
@@ -88,11 +88,11 @@ class PointerNetwork(ModelBase):
         teacher_forcing = conf.teacher_forcing if 'teacher_forcing' in conf else True
         d_outputs_ph, d_outputs, predictions, d_train_inputs = setup_decoder(
           e_inputs_emb, e_state, attention_states, d_cell, 
-          self.batch_size, output_max_len, scope=scope, 
+          batch_size, output_max_len, scope=scope, 
           teacher_forcing=teacher_forcing)
         self.d_train_inputs.append(d_train_inputs)
         d_outputs_length = tf.count_nonzero(d_outputs_ph, axis=1)
-        targets = tf.concat([d_outputs_ph, tf.zeros([self.batch_size, 1], dtype=tf.int32)], axis=1)
+        targets = tf.concat([d_outputs_ph, tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
         # the length of outputs should be added by 1 because of EOS. 
         d_outputs_weights = tf.sequence_mask(
           d_outputs_length+1, maxlen=shape(d_outputs_ph, 1)+1, dtype=tf.float32)
@@ -112,9 +112,14 @@ class PointerNetwork(ModelBase):
     }
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
-    sys.stdout = sys.stderr
+    # sys.stdout = sys.stderr
     # for k,v in feed_dict.items():
     #   print k, v
+    # for x in batch.sources:
+    #   print self.vocab.ids2tokens(x, remove_special=False)
+    # for x in batch.original_sources:
+    #   print x
+    # exit(1)
     # last = list(self.vocab.rev_vocab)[-1]
     # print last
     # print self.vocab.vocab[last]
