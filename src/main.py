@@ -7,32 +7,38 @@ from pprint import pprint
 from logging import FileHandler
 import tensorflow as tf
 
-from utils import common, evaluation
+from utils import common, evaluation, tf_utils
 from core import models, datasets
 from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
 
-#log_file = args.log_file if args.log_file else None
-
-#log_file = None
-#logger = common.logManager(handler=FileHandler(log_file)) if log_file else common.logManager()
-#logger = common.logManager()
-
+tf_config = tf.ConfigProto(
+  log_device_placement=False,
+  allow_soft_placement=True, # GPU上で実行できない演算を自動でCPUに
+  gpu_options=tf.GPUOptions(
+    allow_growth=True, # True->必要になったら確保, False->全部
+  )
+)
+default_config = common.recDotDict({
+  'share_encoder': True,
+  'share_decoder': False,
+})
 class Manager(object):
   @common.timewatch()
-  def __init__(self, args, sess):
+  def __init__(self, args, sess, vocab=None):
     self.sess = sess
     self.config = config = self.get_config(args)
     self.mode = args.mode
     self.logger = common.logManager(handler=FileHandler(args.log_file)) if args.log_file else common.logManager()
 
     sys.stderr.write(str(self.config) + '\n')
+    # Lazy loading.
+    self.dataset = common.dotDict({'train': None, 'valid':None, 'test': None})
     self.dataset_type = getattr(datasets, config.dataset_type)
     if not args.interactive:
-      self.vocab = WordVocabularyWithEmbedding(config.embeddings, 
-                                               vocab_size=config.vocab_size, 
-                                               lowercase=config.lowercase)
-      # Lazy loading.
-      self.dataset = common.dotDict({'train': None, 'valid':None, 'test': None})
+      self.vocab = WordVocabularyWithEmbedding(
+        config.embeddings, 
+        vocab_size=config.vocab_size, 
+        lowercase=config.lowercase) if vocab is None else vocab
 
   def get_config(self, args):
 
@@ -60,7 +66,16 @@ class Manager(object):
         sys.stdout = f
         common.print_config(config)
         sys.stdout = sys.__stdout__
-    return common.recDotDict(config)
+    config = common.recDotDict(config)
+
+    default_config.update(config)
+    config = default_config
+
+    # Override configs by temporary args.
+    if args.test_data_path:
+      config.dataset_path.test = args.test_data_path
+    config.debug = args.debug
+    return config
 
   def save_model(self, model, save_as_best=False):
     checkpoint_path = self.checkpoints_path + '/model.ckpt'
@@ -75,13 +90,13 @@ class Manager(object):
 
   @common.timewatch()
   def train(self):
-    model = self.create_model(self.sess, self.config, self.vocab, 
-                              cleanup=args.cleanup)
     self.dataset.train = self.dataset_type(
       self.config.dataset_path.train, self.vocab,
       num_train_data=self.config.num_train_data)
+
     self.dataset.test = self.dataset_type(
       self.config.dataset_path.test, self.vocab)
+    self.model = model = self.create_model(self.sess, self.config, self.vocab)
 
     config = self.config
     testing_results = []
@@ -91,6 +106,10 @@ class Manager(object):
         output_max_len=config.output_max_len, shuffle=True)
 
       loss, epoch_time = model.train(train_batches)
+      summary = tf_utils.make_summary({
+        'loss': loss
+      })
+      self.summary_writer.add_summary(summary, model.epoch.eval())
 
       self.logger.info('(Epoch %d) Train loss: %.3f (%.1f sec)' % (epoch, loss, epoch_time))
       df = self.test(model=model, dataset=self.dataset.test)
@@ -104,8 +123,9 @@ class Manager(object):
         save_as_best = False
       testing_results.append(average_accuracy)
       self.save_model(model, save_as_best=save_as_best)
+
       model.add_epoch()
-    self.test()
+    return
 
   def debug(self):
     config = self.config
@@ -113,12 +133,13 @@ class Manager(object):
     model.debug(batches)
 
   def demo(self, model=None, inp=None):
+    dataset = self.dataset_type(
+      self.config.dataset_path.test, self.vocab)
     if model is None:
       model = self.create_model(
         self.sess, self.config, self.vocab, 
         checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
-    dataset = self.dataset_type(
-      self.config.dataset_path.test, self.vocab)
+
     while True:
       if not inp:
         sys.stdout.write('Input: ')
@@ -132,32 +153,43 @@ class Manager(object):
       sys.stdout.write("Source:\t%s\n" % ' '.join(inp))
       sys.stdout.write("Target:\t%s\n" % ' | '.join(pred))
       break
-      #inp = None
 
   def test(self, model=None, dataset=None, verbose=True):
-    if model is None:
-      model = self.create_model(
-        self.sess, self.config, self.vocab, 
-        checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
-      test_path = self.tests_path + '/test.best.txt'
-    else:
-      test_path = self.tests_path + '/test.%02d.txt' % model.epoch.eval()
-
     config = self.config
+
     if dataset is None:
       if self.dataset.test is None:
         self.dataset.test = self.dataset_type(
           self.config.dataset_path.test, self.vocab)
       dataset = self.dataset.test
+
+    _, test_filename = common.separate_path_and_filename(
+      self.config.dataset_path.test)
+
+    if model is None:
+        model = self.create_model(
+          self.sess, self.config, self.vocab, 
+          checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
+        test_filename = '%s.best' % (test_filename)
+        used_conditions = None
+    else:
+      test_filename = '%s.%02d' % (test_filename, model.epoch.eval())
+      used_conditions = ['all']
+
     batches = dataset.get_batch(
       1, input_max_len=None, 
       output_max_len=config.output_max_len, shuffle=False)
     predictions = model.test(batches)
     epoch = model.epoch.eval()
-    with open(test_path, 'w') as f:
-      sys.stdout = f 
-      df = dataset.show_results(predictions, verbose=verbose)
-      sys.stdout = sys.__stdout__
+    index, sources, targets = dataset.raw_data
+
+    test_output_path = os.path.join(self.tests_path, test_filename)
+    df, summary = dataset.show_results(sources, targets, predictions, 
+                                       verbose=verbose, 
+                                       target_path_prefix=test_output_path,
+                                       used_conditions=used_conditions)
+    if summary is not None:
+      self.summary_writer.add_summary(summary, model.epoch.eval())
     return df
 
   @common.timewatch()
@@ -186,21 +218,28 @@ class Manager(object):
 
     self.summary_writer = tf.summary.FileWriter(self.summaries_path, 
                                                 sess.graph)
-    self.reuse = True
     return m
 
+  def evaluate(self):
+    dataset = self.dataset_type(
+      self.config.dataset_path.test, self.vocab)
+    index, sources, targets = dataset.raw_data
+    predictions = []
+
+    import pandas as pd
+    for l in pd.read_csv(args.evaluate_data_path).values.tolist():
+      idx, _, lb, ub, cur, rate = l
+      if idx not in index:
+        continue
+      else:
+        predictions.append([lb, ub, cur, rate])
+    df, _ = dataset.show_results(sources, targets, predictions, 
+                                 prediction_is_index=False)
+    print df
 
 def main(args):
   random.seed(0)
   np.random.seed(0)
-  tf_config = tf.ConfigProto(
-    log_device_placement=False,
-    allow_soft_placement=True, # GPU上で実行できない演算を自動でCPUに
-    gpu_options=tf.GPUOptions(
-      allow_growth=True, # True->必要になったら確保, False->全部
-    )
-  )
-
   with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
     tf.set_random_seed(0)
     manager = Manager(args, sess)
@@ -208,12 +247,21 @@ def main(args):
       manager.train()
     elif args.mode == 'test':
       manager.test()
+    elif args.mode == 'evaluate':
+      manager.evaluate()
     elif args.mode == 'demo':
       manager.demo()
     elif args.mode == 'debug':
       manager.debug()
     else:
       raise ValueError('args.mode must be \'train\', \'test\', or \'demo\'.')
+
+  if args.mode == 'train':
+    vocab = manager.vocab
+    with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
+      tf.set_random_seed(0)
+      manager = Manager(args, sess, vocab=vocab)
+      manager.test()
   return manager
 
 if __name__ == "__main__":
@@ -221,11 +269,14 @@ if __name__ == "__main__":
   parser.add_argument("checkpoint_path")
   parser.add_argument("mode")
   parser.add_argument("config_path")
-  parser.add_argument("--cleanup", default=False, type=common.str2bool)
+  
   parser.add_argument("--debug", default=False, type=common.str2bool)
-  parser.add_argument("--log_file", default=None)
-  parser.add_argument("--interactive", default=False)
-  #parser.add_argument("-d", "--debug", default=False, type=common.str2bool)
+  parser.add_argument("--cleanup", default=False, type=common.str2bool)
+  parser.add_argument("--log_file", default=None, type=str)
+  parser.add_argument("--interactive", default=False, type=common.str2bool)
+  parser.add_argument("--test_data_path", default=None, type=str)
+  parser.add_argument("--evaluate_data_path", default='dataset/baseline.complicated.csv', 
+                      type=str)
   args  = parser.parse_args()
   main(args)
 

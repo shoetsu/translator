@@ -20,18 +20,17 @@ class ModelBase(object):
     self.sess = sess
     self.max_gradient_norm = config.max_gradient_norm
 
-    with tf.name_scope('global_variables'):
-      self.global_step = tf.get_variable(
-        "global_step", trainable=False, shape=[],  dtype=tf.int32,
-        initializer=tf.constant_initializer(0, dtype=tf.int32)) 
+    self.global_step = tf.get_variable(
+      "global_step", trainable=False, shape=[],  dtype=tf.int32,
+      initializer=tf.constant_initializer(0, dtype=tf.int32)) 
 
-      self.epoch = tf.get_variable(
-        "epoch", trainable=False, shape=[], dtype=tf.int32,
-        initializer=tf.constant_initializer(0, dtype=tf.int32)) 
+    self.epoch = tf.get_variable(
+      "epoch", trainable=False, shape=[], dtype=tf.int32,
+      initializer=tf.constant_initializer(0, dtype=tf.int32)) 
 
-      self.learning_rate = tf.train.exponential_decay(
-        config.learning_rate, self.global_step,
-        config.decay_frequency, config.decay_rate, staircase=True)
+    self.learning_rate = tf.train.exponential_decay(
+      config.learning_rate, self.global_step,
+      config.decay_frequency, config.decay_rate, staircase=True)
 
   def get_updates(self, loss):
     with tf.name_scope("update"):

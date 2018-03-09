@@ -56,47 +56,43 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
   #attn_size = attention_states.get_shape()[2].value
   attn_length = shape(attention_states, 1)
   attn_size = shape(attention_states, 2)
-  attnw = tf.get_variable("AttnW", [1, attn_size, attn_size])
-  attention_states = tf.nn.conv1d(attention_states, attnw, 1, 'SAME')
-  attnv = tf.get_variable("AttnV", [attn_size])
+  with tf.name_scope('attention_setup'):
+    attnw = tf.get_variable("AttnW", [1, attn_size, attn_size])
+    attention_states = tf.nn.conv1d(attention_states, attnw, 1, 'SAME')
+    attnv = tf.get_variable("AttnV", [attn_size])
+  sys.stdout = sys.stderr
 
   def attention_weight(output):
-    #print 'attention_states', attention_states
-    #print 'output', output
     y = _linear(output, attn_size, True)
     y = tf.reshape(y, [-1, 1, attn_size])
+    # Calculate attention weights for every encoder's input by taking an inner product between the weight bector (attnv), and the conbined decoder's state with the encoder's output.
     attention_vectors = tf.nn.softmax(tf.reduce_sum(attnv * tf.tanh(y + attention_states), axis=2))
     return attention_vectors
 
   states = [initial_state]
   outputs = []
-  inputs = []
+  pointed_idxs = []
 
   for i, d in enumerate(tf.unstack(decoder_inputs, axis=1)):
-  #for i in tf.range(0, shape(decoder_inputs, 1)):
-    #d = decoder_inputs[i]
-    #print 'i=%d'%i
-    if i > 0:
-      tf.get_variable_scope().reuse_variables()
-    pointed_idx = d
-    # in testing, inputs to decoder won't be used except the first one.
-    if feed_prev and i > 0:
-      # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
-      pointed_idx =  tf.argmax(output, axis=1)
-      
-    pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
-    inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
-    inp = tf.stop_gradient(inp)
-    #print 'pointed_idx',pointed_idx
-    #print 'next_inp', inp
-    #sys.stdout=sys.stderr
-    #print i, inp, states[-1]
-    output, state = cell(inp, states[-1])
-    output = attention_weight(output)
-    #print 'output', output
-    inputs.append(inp)
-    states.append(state)
-    outputs.append(output)
+    with tf.name_scope('Decode_%d' % i):
+      if i > 0:
+        tf.get_variable_scope().reuse_variables()
+      pointed_idx = d
+      # in testing, inputs to decoder won't be used except the first one.
+      if feed_prev and i > 0:
+        # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
+        pointed_idx = tf.argmax(output, axis=1, output_type=tf.int32)
+      pointed_idxs.append(pointed_idx)
+      with tf.name_scope('copy_from_encoder_inputs'):
+        pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
+        inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
+        inp = tf.stop_gradient(inp)
+      output, state = cell(inp, states[-1])
+      with tf.name_scope('attention_weight'):
+        output = attention_weight(output)
+      #print 'output', output
+      states.append(state)
+      outputs.append(output)
   outputs = tf.stack(outputs, axis=1)
   states = tf.stack(states, axis=1)
-  return outputs, states #, inputs
+  return outputs, states, pointed_idxs

@@ -12,12 +12,14 @@ _PAD = "_PAD"
 _BOS = "_BOS"
 _EOS = "_EOS"
 _UNK = "_UNK"
+_NUM = "_NUM"
 
 ERROR_ID = -1
 PAD_ID = 0
 BOS_ID = 1
 EOS_ID = 2
 UNK_ID = 3
+
 _DIGIT_RE = re.compile(r"\d")
 START_VOCAB = [_PAD, _BOS, _EOS, _UNK]
 UNDISPLAYED_TOKENS = [_PAD, _BOS, _EOS]
@@ -58,10 +60,10 @@ class VocabularyBase(object):
     self.vocab = None
     self.rev_vocab = None
     self.name = None
-    self.start_offset = [BOS_ID] if add_bos else []
-    self.end_offset = [EOS_ID] if add_eos else []
-    self.n_start_offset = len(self.start_offset)
-    self.n_end_offset = len(self.end_offset)
+    # self.start_offset = [BOS_ID] if add_bos else []
+    # self.end_offset = [EOS_ID] if add_eos else []
+    # self.n_start_offset = len(self.start_offset)
+    # self.n_end_offset = len(self.end_offset)
 
   @property
   def size(self):
@@ -114,6 +116,7 @@ class WordVocabularyBase(VocabularyBase):
       raise ValueError
     return res
 
+
 class PredefinedVocabWithEmbeddingBase(object):
   def init_vocab(self, emb_configs, source_dir, vocab_size=0):
     start_vocab = START_VOCAB
@@ -144,7 +147,7 @@ class PredefinedVocabWithEmbeddingBase(object):
           continue
         #################3
         #if False and i ==100 :
-        if False and i==2000:
+        if False and i==200:
           break
         #################
         word_and_embedding = line.split()
@@ -182,6 +185,18 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
     self.vocab, self.rev_vocab, self.embeddings = self.init_vocab(
       emb_configs, source_dir, vocab_size)
     # For some reason "tf.contrib.lookup.HashTable" is not successfully imported when being run from jupyter.
-    self.lookup_table = tf.contrib.lookup.HashTable(
+
+  @property
+  def lookup_table(self):
+    return tf.contrib.lookup.HashTable(
       tf.contrib.lookup.KeyValueTensorInitializer(self.vocab.keys(), 
                                                   self.vocab.values()), UNK_ID)
+  def add2vocab(self, token, new_embedding=None):
+    if token not in self.rev_vocab:
+      self.vocab[token] = len(self.vocab)
+      self.rev_vocab.add(token)
+      if not new_embedding:
+        new_embedding = np.zeros((1, len(self.embeddings[0])))
+      self.embeddings = np.concatenate(
+        (self.embeddings, new_embedding)
+      )

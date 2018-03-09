@@ -2,7 +2,7 @@
 
 #input from shell
 usage() {
-    echo "Usage:$0 bin_file checkpoint_path mode [config_path]"
+    echo "Usage:$0 checkpoint_path mode [config_path]"
     exit 1
 }
 
@@ -42,7 +42,7 @@ for i in $(seq 0 $(expr ${#opt_names[@]} - 1)); do
 done;
 
 # get params from input args
-params_arr=(log_file port debug cleanup)
+params_arr=(log_file interactive cleanup test_data_path evaluate_data_path debug)
 params=""
 
 
@@ -52,4 +52,4 @@ for param in ${params_arr[@]}; do
     fi
 done;
 
-python main.py $checkpoint_path $mode $config_path $params
+python src/main.py $checkpoint_path $mode $config_path $params

@@ -1,7 +1,7 @@
 import pyhocon
 import numpy as np
 import multiprocessing as mp
-import time, random, os, commands, collections, re
+import time, random, os, commands, collections, re, sys
 from datetime import datetime
 from itertools import chain
 from logging import getLogger, StreamHandler, FileHandler, Formatter, DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -13,16 +13,20 @@ except:
 def transpose(l):
   return list(zip(*l))
 
-def read_textfile(lines):
-  # lines: list of str, file object, or rows of DataFrame.
-  return [" ".join(tokenize_heuristics(l).replace('\n', '').strip().split()).lower() for l in lines]
-
-
 def quote(str_):
   return "\"" + str_ + "\""
 
 def timestamp():
   return datetime.now()
+
+def separate_path_and_filename(file_path):
+    pattern = '^(.+)/(.+)$'
+    m = re.match(pattern, file_path)
+    if m:
+      path, filename = m.group(1), m.group(2) 
+    else:
+      path, filename = None , file_path
+    return path, filename
 
 def random_string(length, seq='0123456789abcdefghijklmnopqrstuvwxyz'):
     sr = random.SystemRandom()
@@ -36,9 +40,31 @@ def restore_to_tmpfile(sentences, tmp_dir='/tmp'):
   tmp_filepath = os.path.join(tmp_dir, tmp_filename)
   with open(tmp_filepath, 'w') as f:
     for line in sentences:
+      if type(line) == list:
+        line = ' '.join(line)
       f.write(line + '\n')
   return tmp_filepath
 
+def get_pos(sents, output_path=None):
+  TAGGER_DIR = '/home/shoetsu/downloads/stanford-postagger'
+  suffix = '.pos'
+  output_path = output_path + suffix
+  if output_path and os.path.exists(output_path):
+    sys.stderr.write("Reading the POS file...\n")
+    pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (output_path)).split('\n\n')]
+  else:
+    sys.stderr.write("Runnning POS Tagger...\n")
+    tmp_filepath = restore_to_tmpfile(sents, tmp_dir='/tmp/shoetsu/tmp')
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
+                               'scripts/stanford-postagger.sh')
+    cmd = "%s %s 4g" % (script_path, tmp_filepath) 
+    os.system(cmd)
+    pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (tmp_filepath + suffix)).split('\n\n')]
+    if output_path is not None:
+      sys.stderr.write("Restoring to \'%s\' ...  \n" % output_path)
+      os.system('cp %s %s' % (tmp_filepath + suffix, output_path))
+    os.system('rm %s' % (tmp_filepath))
+  return pos_tags
 
 def str2tuple(v):
   type_f = lambda x: int(x) if x.isdigit() else str(x)
