@@ -8,7 +8,6 @@ num_columns=4
 num_train_data=0
 
 # Training.
-batch_size=10
 max_to_keep = 10
 max_epoch = 30
 max_gradient_norm = 5.0
@@ -18,6 +17,7 @@ decay_frequency = 100
 dropout_rate=0.2
 train_embedding=true
 teacher_forcing=false
+batch_size=10
 
 # Structure.
 num_layers=1
@@ -29,10 +29,12 @@ rnn_type=bidirectional_dynamic_rnn
 cell_type=GRUCell
 model_type=PointerNetwork
 #dataset_type=NumSymbolizePriceDataset
-dataset_type=PriceDataset
+#dataset_type=PriceDataset
+dataset_type=PriceDatasetWithFeatures
 
 dataset_path {
   test = dataset/test.annotated.csv
+  valid = dataset/test.annotated.csv
   #train = dataset/weak_label_9800_sep.csv
   train = dataset/train.annotated.csv
   #train = dataset/mixed.train.csv

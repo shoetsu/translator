@@ -16,30 +16,32 @@ def debug_print(variables, message=''):
   sys.stdout = sys.__stdout__
 
 
-def setup_decoder(e_inputs_emb, e_state, attention_states, d_cell, batch_size, 
+def setup_decoder(d_outputs_ph, e_inputs_emb, e_state, 
+                  attention_states, d_cell, batch_size, 
                   output_max_len, scope=None, teacher_forcing=True):
   # The pointed indexs of encoder's input.
-  d_outputs_ph = tf.placeholder(
-    tf.int32, [None, output_max_len], name="DecoderOutput")
 
   # A BOS will be appended to the decoder's outputs and prepended to the decoder's inputs.
   # e.g. (target: [3,2,5], weights: [1,1,1])
   # -> (d_input: [0, 3, 2, 5], d_output: [3, 2, 5, 0], d_weights:[1, 1, 1, 1])
 
-  d_inputs = tf.concat([tf.zeros([batch_size, 1], dtype=tf.int32), d_outputs_ph], axis=1)
+  with tf.name_scope('add_bos'):
+    d_inputs = tf.concat([tf.zeros([batch_size, 1], dtype=tf.int32), d_outputs_ph], axis=1)
   
   # TODO: for some reason, setting feed_prev as False in training makes the performance worse...
-  d_outputs, d_states, d_train_inputs  = pointer_decoder(
-    e_inputs_emb, d_inputs, e_state,
-    attention_states, d_cell, scope=scope,
-    feed_prev=not teacher_forcing)
+  with tf.name_scope('train_decoder'):
+    d_outputs, d_states, copied_inputs  = pointer_decoder(
+      e_inputs_emb, d_inputs, e_state,
+      attention_states, d_cell, scope=scope,
+      feed_prev=not teacher_forcing)
 
   tf.get_variable_scope().reuse_variables()
-  predictions, _, _ = pointer_decoder(
-    e_inputs_emb, d_inputs, e_state,
-    attention_states, d_cell, scope=scope,
-    feed_prev=True)
-  return d_outputs_ph, d_outputs, predictions, d_train_inputs
+  with tf.name_scope('test_decoder'):
+    predictions, _, _ = pointer_decoder(
+      e_inputs_emb, d_inputs, e_state,
+      attention_states, d_cell, scope=scope,
+      feed_prev=True)
+  return d_outputs, predictions, copied_inputs
 
 class PointerNetwork(ModelBase):
   def __init__(self, sess, conf, vocab):
@@ -50,12 +52,14 @@ class PointerNetwork(ModelBase):
     with tf.name_scope('keep_prob'):
       self.keep_prob = 1.0 - tf.to_float(self.is_training) * conf.dropout_rate
 
-    # <Sample input to be fed>
+    # <Sample input>
     # e_inputs: [1, 40, 44, 0, 0], d_outputs: [2, 0, 0] (target=44)
-    # The input word ids.
-    self.e_inputs_ph = tf.placeholder(
-      tf.int32, [None, input_max_len], name="EncoderInput")
-    batch_size = shape(self.e_inputs_ph, 0)
+    with tf.name_scope('EncoderInput'):
+      self.e_inputs_ph = tf.placeholder(
+        tf.int32, [None, input_max_len], name="EncoderInput")
+
+    with tf.name_scope('batch_size'):
+      batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
       self.w_embeddings = self.initialize_embeddings(
@@ -79,30 +83,39 @@ class PointerNetwork(ModelBase):
     self.d_outputs_ph = []
     self.losses = []
     self.greedy_predictions = []
-    self.d_train_inputs = []
+    self.copied_inputs = []
     for i in range(conf.num_columns):
+      with tf.name_scope('DecoderOutput%d' % i):
+        d_outputs_ph = tf.placeholder(
+          tf.int32, [None, output_max_len], name="DecoderOutput")
+
       ds_name = 'Decoder' if conf.share_decoder else 'Decoder%d' % i 
       with tf.variable_scope(ds_name) as scope:
         d_cell = setup_cell(conf.cell_type, conf.hidden_size, conf.num_layers,
                             keep_prob=self.keep_prob)
         teacher_forcing = conf.teacher_forcing if 'teacher_forcing' in conf else True
-        d_outputs_ph, d_outputs, predictions, d_train_inputs = setup_decoder(
-          e_inputs_emb, e_state, attention_states, d_cell, 
+        d_outputs, predictions, copied_inputs = setup_decoder(
+          d_outputs_ph, e_inputs_emb, e_state, attention_states, d_cell, 
           batch_size, output_max_len, scope=scope, 
           teacher_forcing=teacher_forcing)
-        self.d_train_inputs.append(d_train_inputs)
-        d_outputs_length = tf.count_nonzero(d_outputs_ph, axis=1)
-        targets = tf.concat([d_outputs_ph, tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
-        # the length of outputs should be added by 1 because of EOS. 
-        d_outputs_weights = tf.sequence_mask(
-          d_outputs_length+1, maxlen=shape(d_outputs_ph, 1)+1, dtype=tf.float32)
+        self.copied_inputs.append(copied_inputs)
+        d_outputs_length = tf.count_nonzero(d_outputs_ph, axis=1, 
+                                            name='outputs_length')
+        with tf.name_scope('add_eos'):
+          targets = tf.concat([d_outputs_ph, tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
+
+        # the length of outputs should be also added by 1 because of EOS. 
+        with tf.name_scope('output_weights'):
+          d_outputs_weights = tf.sequence_mask(
+            d_outputs_length+1, maxlen=shape(d_outputs_ph, 1)+1, dtype=tf.float32)
         with tf.name_scope('loss%d' % i):
           loss = tf.contrib.seq2seq.sequence_loss(
             d_outputs, targets, d_outputs_weights)
       self.d_outputs_ph.append(d_outputs_ph)
       self.losses.append(loss)
       self.greedy_predictions.append(predictions)
-    self.loss = tf.reduce_mean(self.losses)
+    with tf.name_scope('Loss'):
+      self.loss = tf.reduce_mean(self.losses)
     self.updates = self.get_updates(self.loss)
 
   def get_input_feed(self, batch, is_training):
@@ -126,7 +139,7 @@ class PointerNetwork(ModelBase):
     # for x in batch.sources:
     #   print self.vocab.ids2tokens(x)
     # exit(1)
-    sys.stdout = sys.__stdout__
+    # sys.stdout = sys.__stdout__
     return feed_dict
 
   def debug(self, data):

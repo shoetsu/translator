@@ -4,8 +4,10 @@ import sys, re, random, itertools, collections, os
 import numpy as np
 import pandas as pd
 from nltk.tokenize import sent_tokenize, word_tokenize
-from core.vocabularies import _BOS, BOS_ID, _PAD, PAD_ID, _NUM
+from core.vocabularies import _BOS, BOS_ID, _PAD, PAD_ID, _NUM, FeatureVocab
 from utils import evaluation, tf_utils, common
+
+NONE = '-' # token for empty label.
 
 def find_entry(target_labels):
   """
@@ -20,19 +22,48 @@ def find_entry(target_labels):
     exit(1)
   return labels
 
+def ids2tokens(s_tokens, t_tokens, p_idxs):
+  outs = []
+  preds = []
+  inp = [x for x in s_tokens if x not in [_BOS, _PAD]]
+  if t_tokens is not None:
+    for tt in t_tokens:
+      out = ' '.join([x for x in tt if x not in [_BOS, _PAD]])
+      outs.append(out)
+  for pp in p_idxs:
+    pred =  [s_tokens[k] for k in pp if len(s_tokens) > k]
+    pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
+    if not pred:
+      pred = NONE
+    preds.append(pred)
+  return inp, outs, preds
+
+def create_demo_batch(source, output_max_len, num_targets):
+  if type(source[0]) == int:
+    source = [source]
+  #source = self.vocab.ids2tokens(text)
+  sys.stdout = sys.stderr
+  targets = [[[0] for _ in xrange(num_targets)]]
+  targets = list(zip(*targets)) # to column-major. (for padding)
+  source =  tf.keras.preprocessing.sequence.pad_sequences(source, padding='post', truncating='post', value=PAD_ID)
+  targets = [tf.keras.preprocessing.sequence.pad_sequences(targets_by_column, maxlen=output_max_len, padding='post', truncating='post', value=PAD_ID) for targets_by_column in targets]
+  yield common.dotDict({
+    'sources': np.array(source),
+    'targets': [np.array(t) for t in targets],
+  })
+  
 
 class DatasetBase(object):
   pass
 
-class PriceDataset(DatasetBase):
-  NONE = '-'
+class _PriceDataset(DatasetBase):
 
   @common.timewatch()
-  def __init__(self, path, vocab, num_train_data=0):
+  def __init__(self, path, vocab, num_lines=0):
     sys.stderr.write('Loading dataset from %s ...\n' % (path))
     data = pd.read_csv(path)
-    if num_train_data:
-      data = data[:num_train_data]
+    if num_lines:
+      data = data[:num_lines]
     self.vocab = vocab
     self.tokenizer = vocab.tokenizer
 
@@ -79,18 +110,6 @@ class PriceDataset(DatasetBase):
         'original_targets': b_ori_targets,
       })
   
-  def create_demo_batch(self, text, output_max_len):
-    source = [self.vocab.tokens2ids(text)]
-    targets = [[[0] for _ in self.targets_name]]
-    targets = list(zip(*targets)) # to column-major. (for padding)
-    source =  tf.keras.preprocessing.sequence.pad_sequences(source, padding='post', truncating='post', value=PAD_ID)
-    targets = [tf.keras.preprocessing.sequence.pad_sequences(targets_by_column, maxlen=output_max_len, padding='post', truncating='post', value=PAD_ID) for targets_by_column in targets]
-    
-    yield common.dotDict({
-      'sources': np.array(source),
-      'targets': [np.array(t) for t in targets],
-    })
-
   @property 
   def raw_data(self):
     return self.indexs, self.original_sources, self.targets
@@ -98,7 +117,7 @@ class PriceDataset(DatasetBase):
   @property
   def symbolized(self):
     # Find the indice of the tokens in a source sentence which was copied as a target label.
-    targets = [[[o.index(x) for x in tt if x != self.NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
+    targets = [[[o.index(x) for x in tt if x != NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
     #targets = list(zip(*targets))
     sources = [self.vocab.tokens2ids(s) for s in self.sources]
     #return list(zip(sources, targets))
@@ -131,9 +150,9 @@ class PriceDataset(DatasetBase):
     for i, (raw_s, raw_t, p) in enumerate(zip(original_sources, targets, predictions)):
       token_inp = self.vocab.ids2tokens(test_inputs_tokens[i])
       if prediction_is_index:
-        inp, gold, pred = self.ids_to_tokens(raw_s, raw_t, p)
+        inp, gold, pred = ids2tokens(raw_s, raw_t, p)
       else:
-        inp, gold, _ = self.ids_to_tokens(raw_s, raw_t, p)
+        inp, gold, _ = ids2tokens(raw_s, raw_t, p)
         pred = [x.strip() for x in p]
       inputs.append(inp)
       token_inputs.append(token_inp)
@@ -149,7 +168,7 @@ class PriceDataset(DatasetBase):
     all_success = lambda g, p: tuple(g) == tuple(p)
     conditions = [
       ('all', (lambda g: True, all_success)),
-      ('range', (lambda g: g[0] != g[1], lower_upper_success)),
+      ('range', (lambda g: g[0] != g[1] and g[0] != '-' and g[1] != '-', lower_upper_success)),
       ('multi', (lambda g: len(g[0].split(' ')) > 1 or len(g[1].split(' ')) > 1, 
                  lower_upper_success)),
       ('less', (lambda g: g[0] == '-' and g[1] != '-', lower_upper_success)),
@@ -158,18 +177,56 @@ class PriceDataset(DatasetBase):
     if output_types is not None:
       conditions = [c for c in conditions if c[0] in output_types]
 
-    dfs = []
+    df_sums = []
+    df_rows = []
     summaries = []
     for (name, cf) in conditions:
-      with open("%s.%s" % (target_path_prefix, name), 'w') as f:
+      with open("%s.%s" % (target_path_prefix, name + '.csv'), 'w') as f:
         sys.stdout = f
-        df, summary = self.summarize(inputs, token_inputs, golds, preds, cf)
+        df_sum, df_row, summary = self.summarize(inputs, token_inputs, 
+                                                golds, preds, cf)
         sys.stdout = sys.__stdout__
-      dfs.append(df)
+      df_sums.append(df_sum)
+      df_rows.append(df_row)
       summaries.append(summary)
-    return dfs[0], summaries[0]
 
-  def summarize(self, inputs, token_inputs, _golds, _preds, cf):
+    df_sum_all = df_sums[0]
+    df_row_all = df_rows[0]
+    summary_all = summaries[0]
+
+    if output_types is None: 
+      # Reshape results of testing for visualization.
+      sys.stdout = sys.stderr
+      names = [c[0] for c in conditions[1:]]
+      indices = [df_row.index.tolist() for df_row in df_rows[1:]]
+      types = [[] for i in df_row_all.index.tolist()]
+      for name, idx in zip(names, indices):
+        for i in idx:
+          types[i].append(name)
+      types = [' '.join(x) if x else '-' for x in types]
+      df_row_all['type'] = types
+      header = df_row_all.columns.values.tolist()
+      df_row_all =  df_row_all.ix[:, ['type'] + header[:-1]]
+      #print df_row_all
+
+
+      df_em_all = [df.values.tolist()[0] for df in df_sums]
+      df_em_all = list(zip(*df_em_all))
+      header = ['type'] + df_sum_all.columns.tolist()
+      types = tuple([c[0] for c in conditions])
+      df_em_all = [types] + df_em_all
+      df_em_all = pd.DataFrame({k:v for k,v in zip(header, df_em_all)}).ix[:, header].set_index('type')
+      with open("%s.%s" % (target_path_prefix, 'summary.csv'), 'w') as f:
+        sys.stdout = f
+        print df_row_all.to_csv()
+        print df_em_all.to_csv()
+        sys.stdout = sys.__stdout__
+
+      #  pass
+    return df_sums[0], summaries[0]
+
+  def summarize(self, inputs, token_inputs, _golds, _preds, cf, 
+                output_as_csv=False):
     '''
     inputs: 2D array of string in original sources. [len(data), max_source_length]
     token_inputs: 2D array of string. Tokens not in the vocabulary are converted into _UNK. [len(data), max_source_length]
@@ -178,18 +235,27 @@ class PriceDataset(DatasetBase):
     cf: Tuple of two functions. cf[0] is for the condition whether it includes a line of test into the summary, and cf[1] is to decide whether a pair of tuple (gold, prediction) for a line of testing is successful of not. 
     '''
     golds, preds = [], []
+    res = []
     for i, (inp, token_inp, g, p) in enumerate(zip(inputs, token_inputs, _golds, _preds)):
       if not cf[0](g):
         continue
       golds.append(g)
       preds.append(p)
       is_success = cf[1](g, p)
-      succ_or_fail = 'EM_Success' if is_success else "EM_Failure"
-      sys.stdout.write('<%d> (%s)\n' % (i, succ_or_fail))
-      sys.stdout.write('Test input       :\t%s\n' % (' '.join(inp)))
-      sys.stdout.write('Test input (unk) :\t%s\n' % (' '.join(token_inp)))
-      sys.stdout.write('Human label      :\t%s\n' % (' | '.join(g)))
-      sys.stdout.write('Test prediction  :\t%s\n' % (' | '.join(p)))
+      res.append([i, is_success, ' '.join(inp), ' | '.join(g), ' | '.join(p)])
+      if not output_as_csv:
+        succ_or_fail = 'EM_Success' if is_success else "EM_Failure"
+        sys.stdout.write('<%d> (%s)\n' % (i, succ_or_fail))
+        sys.stdout.write('Test input       :\t%s\n' % (' '.join(inp)))
+        sys.stdout.write('Test input (unk) :\t%s\n' % (' '.join(token_inp)))
+        sys.stdout.write('Human label      :\t%s\n' % (' | '.join(g)))
+        sys.stdout.write('Test prediction  :\t%s\n' % (' | '.join(p)))
+
+    # Print results
+    header = ['index', 'success', 'sentence', 'human (LB,UB,currency,rate)', 'prediction (LB,UB,currency,rate)']
+    res = {k:v for k, v in zip(header, list(zip(*res)))}
+    df_row = pd.DataFrame(res)
+    df_row = df_row.ix[:, header].set_index('index')
 
     EM = evaluation.exact_match(golds, preds)
     precisions, recalls = evaluation.precision_recall(golds, preds)
@@ -198,43 +264,33 @@ class PriceDataset(DatasetBase):
     for col, col_name in zip(zip(EM, precisions, recalls), self.targets_name):
       res[col_name] = col
 
-    df = pd.DataFrame(res)
-    df = df.ix[:,['Metrics'] + self.targets_name].set_index('Metrics')
+    df_sum = pd.DataFrame(res)
+    df_sum = df_sum.ix[:,['Metrics'] + self.targets_name].set_index('Metrics')
 
     # Make summary for Tensorboard.
-    column_names = [x for x in df]
-    row_names = [x for x in df.index]
+    column_names = [x for x in df_sum]
+    row_names = [x for x in df_sum.index]
     summary_dict = {}
-    for row_name, row in zip(row_names, df.values.tolist()):
+    for row_name, row in zip(row_names, df_sum.values.tolist()):
       for column_name, val in zip(column_names, row):
         k = "%s/%s" % (row_name, column_name)
         summary_dict[k] = val
     summary = tf_utils.make_summary(summary_dict)
-    print ''
-    print df
 
-    return df, summary
+    if output_as_csv:
+      print df_row.to_csv()
+      print ''
+      print df_sum.to_csv()
+    else:
+      #print df_row
+      print ''
+      print df_sum
 
-  def ids_to_tokens(self, s_tokens, t_tokens, p_idxs):
-    outs = []
-    preds = []
-    inp = [x for x in s_tokens if x not in [_BOS, _PAD]]
-    if t_tokens is not None:
-      for tt in t_tokens:
-        out = ' '.join([x for x in tt if x not in [_BOS, _PAD]])
-        outs.append(out)
-    for pp in p_idxs:
-      pred =  [s_tokens[k] for k in pp if len(s_tokens) > k]
-      pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
-      if not pred:
-        pred = self.NONE
-      preds.append(pred)
-    return inp, outs, preds
+    return df_sum, df_row, summary
 
-
-class NumSymbolizePriceDataset(PriceDataset):
-  def __init__(self, path, vocab, num_train_data=0):
-    PriceDataset.__init__(self, path, vocab, num_train_data)
+class _NumSymbolizePriceDataset(_PriceDataset):
+  def __init__(self, path, vocab, num_lines=0):
+    _PriceDataset.__init__(self, path, vocab, num_lines)
     self.vocab.add2vocab(_NUM)
     self.pos = common.get_pos(self.original_sources, output_path=path)
     assert len(self.pos) == len(self.sources)
@@ -246,8 +302,9 @@ class NumSymbolizePriceDataset(PriceDataset):
   @property
   def symbolized(self):
     # Find the indice of the tokens in a source sentence which was copied as a target label.
-    targets = [[[o.index(x) for x in tt if x != self.NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
-    sources = [self.vocab.tokens2ids([x if i not in idx else _NUM for i, x in enumerate(s)]) for s, idx in zip(self.sources, self.num_indices)]
+    targets = [[[o.index(x) for x in tt if x != NONE and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
+    #sources = [self.vocab.tokens2ids([x if i not in idx else _NUM for i, x in enumerate(s)]) for s, idx in zip(self.sources, self.num_indices)]
+    sources = [self.vocab.tokens2ids([x if i not in idx else '0' for i, x in enumerate(s)]) for s, idx in zip(self.sources, self.num_indices)]
     return sources, targets
 
   def concat_numbers(self, _sources, _targets, _pos):
@@ -282,6 +339,47 @@ class NumSymbolizePriceDataset(PriceDataset):
     return sources, targets, num_indices
 
 
-class PriceDatasetWithFeatures(PriceDataset):
-  def __init__(self, path, vocab, num_train_data=0):
-    PriceDataset.__init__(self, path, vocab, num_train_data=num_train_data)
+class _PriceDatasetWithFeatures(_PriceDataset):
+  def __init__(self, path, vocab, num_lines=0):
+    _PriceDataset.__init__(self, path, vocab, num_lines=num_lines)
+    self.pos = common.get_pos(self.original_sources, output_path=path)
+    self.pos_vocab = None # given after initialization
+
+class PackedDatasetBase(object):
+  pass
+
+class PriceDataset(PackedDatasetBase):
+  '''
+  The class contains train, valid, test dataset.
+
+  Args:
+     pathes: A list of string. ([train_path, valid_path, test_path])
+     vocab: A vocabulary object in core/vocabularies.py
+  '''
+  dataset_type = _PriceDataset    
+  def __init__(self, pathes, vocab, num_train_data=0, no_train=False):
+    train_path, valid_path, test_path = pathes.train, pathes.valid, pathes.test
+    self.train = self.dataset_type(train_path, vocab, num_lines=num_train_data) if not no_train else None
+    self.valid = self.dataset_type(valid_path, vocab)
+    self.test = self.dataset_type(test_path, vocab)
+
+class NumSymbolizePriceDataset(PriceDataset):
+  dataset_type = _NumSymbolizePriceDataset
+
+class PriceDatasetWithFeatures(PackedDatasetBase):
+  dataset_type = _PriceDatasetWithFeatures
+  def __init__(self, pathes, vocab, num_train_data=0, no_train=False):
+    
+    train_path, valid_path, test_path = pathes.train, pathes.valid, pathes.test
+    self.train = self.dataset_type(
+      train_path, vocab, 
+      pos_vocab=pos_vocab, num_lines=num_train_data) if not no_train else None
+    self.valid = self.dataset_type(valid_path, vocab, pos_vocab=pos_vocab)
+    self.test = self.dataset_type(test_path, vocab, pos_vocab=pos_vocab)
+
+    pos_lists = collections.Counter(common.flatten(self.train.pos)).keys() if self.train else None
+    pos_vocab = FeatureVocab
+
+
+
+

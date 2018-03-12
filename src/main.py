@@ -13,32 +13,37 @@ from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
 
 tf_config = tf.ConfigProto(
   log_device_placement=False,
-  allow_soft_placement=True, # GPU上で実行できない演算を自動でCPUに
+  allow_soft_placement=True, 
   gpu_options=tf.GPUOptions(
-    allow_growth=True, # True->必要になったら確保, False->全部
+    allow_growth=True, # If False, all memories of the GPU will be occupied.
   )
 )
 default_config = common.recDotDict({
   'share_encoder': True,
   'share_decoder': False,
 })
+
 class Manager(object):
   @common.timewatch()
   def __init__(self, args, sess, vocab=None):
     self.sess = sess
-    self.config = config = self.get_config(args)
+    self.config = self.get_config(args)
     self.mode = args.mode
     self.logger = common.logManager(handler=FileHandler(args.log_file)) if args.log_file else common.logManager()
 
     sys.stderr.write(str(self.config) + '\n')
-    # Lazy loading.
-    self.dataset = common.dotDict({'train': None, 'valid':None, 'test': None})
-    self.dataset_type = getattr(datasets, config.dataset_type)
-    if not args.interactive: # For saving time when running in jupyter.
+
+    self.dataset_type = getattr(datasets, self.config.dataset_type)
+    if not args.interactive:
       self.vocab = WordVocabularyWithEmbedding(
-        config.embeddings, 
-        vocab_size=config.vocab_size, 
-        lowercase=config.lowercase) if vocab is None else vocab
+        self.config.embeddings, 
+        vocab_size=self.config.vocab_size, 
+        lowercase=self.config.lowercase) if vocab is None else vocab
+
+      self.dataset = self.dataset_type(
+        self.config.dataset_path, self.vocab,
+        num_train_data=self.config.num_train_data, no_train=args.mode!='train')
+
 
   def get_config(self, args):
     self.model_path = args.checkpoint_path
@@ -71,11 +76,12 @@ class Manager(object):
     config = default_config
 
     # Override configs by temporary args.
-    if args.test_data_path:
+    if 'test_data_path' and args.test_data_path:
       config.dataset_path.test = args.test_data_path
-    if args.batch_size:
+    if 'batch_size' in args and args.batch_size:
       config.batch_size = args.batch_size
-    config.debug = args.debug
+    if 'debug' in args:
+      config.debug = args.debug
     return config
 
   def save_model(self, model, save_as_best=False):
@@ -90,21 +96,15 @@ class Manager(object):
         os.system(cmd)
 
   @common.timewatch()
-  def train(self):
-    self.dataset.train = self.dataset_type(
-      self.config.dataset_path.train, self.vocab,
-      num_train_data=self.config.num_train_data)
-
-    self.dataset.test = self.dataset_type(
-      self.config.dataset_path.test, self.vocab)
-    self.model = model = self.create_model(self.sess, self.config, self.vocab)
-
-    config = self.config
+  def train(self, model=None):
+    if model is None:
+      model = self.create_model(
+        self.sess, self.config, self.vocab)
     testing_results = []
     for epoch in xrange(model.epoch.eval(), self.config.max_epoch):
       train_batches = self.dataset.train.get_batch(
-        config.batch_size, input_max_len=config.input_max_len, 
-        output_max_len=config.output_max_len, shuffle=True)
+        self.config.batch_size, input_max_len=self.config.input_max_len, 
+        output_max_len=self.config.output_max_len, shuffle=True)
 
       loss, epoch_time = model.train(train_batches)
       summary = tf_utils.make_summary({
@@ -113,7 +113,8 @@ class Manager(object):
       self.summary_writer.add_summary(summary, model.epoch.eval())
 
       self.logger.info('(Epoch %d) Train loss: %.3f (%.1f sec)' % (epoch, loss, epoch_time))
-      df = self.test(model=model, dataset=self.dataset.test)
+      df = self.test(model=model, dataset=self.dataset.valid,
+                     in_training=True)
       average_accuracy = np.mean(df.values.tolist()[0])
       if epoch == 0 or average_accuracy > max(testing_results):
         save_as_best = True
@@ -124,7 +125,6 @@ class Manager(object):
         save_as_best = False
       testing_results.append(average_accuracy)
       self.save_model(model, save_as_best=save_as_best)
-
       model.add_epoch()
     return
 
@@ -134,48 +134,47 @@ class Manager(object):
     model.debug(batches)
 
   def demo(self, model=None, inp=None):
-    dataset = self.dataset_type(
-      self.config.dataset_path.test, self.vocab)
+    dataset = self.dataset_type
     if model is None:
       model = self.create_model(
         self.sess, self.config, self.vocab, 
         checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
 
-    while True:
-      if not inp:
-        sys.stdout.write('Input: ')
-        inp = sys.stdin.readline().replace('\n', '')
+    def decode(inp):
       inp_origin = [_BOS] + self.vocab.tokenizer(inp, normalize_digits=False)
       inp_normalized = [_BOS] + self.vocab.tokenizer(inp)
-      batch = dataset.create_demo_batch(inp_normalized, 
-                                        self.config.output_max_len)
+      batch = datasets.create_demo_batch(self.vocab.tokens2ids(inp_normalized), 
+                                         self.config.output_max_len,
+                                         num_targets=self.config.num_columns)
       predictions = model.test(batch)
-      inp, _, pred = dataset.ids_to_tokens(inp_origin, None, predictions[0])
-      sys.stdout.write("Source:\t%s\n" % ' '.join(inp))
-      sys.stdout.write("Target:\t%s\n" % ' | '.join(pred))
-      break
+      inp, _, pred = datasets.ids2tokens(inp_origin, None, predictions[0])
+      sys.stdout.write("Source      :\t%s\n" % ' '.join(inp))
+      sys.stdout.write("Source(unk) :\t%s\n" % ' '.join(inp_normalized))
+      sys.stdout.write("Target      :\t%s\n" % ' | '.join(pred))
 
-  def test(self, model=None, dataset=None, verbose=True):
+    if inp:
+      decode(inp)
+    else:
+      while True:
+        sys.stdout.write('Input: ')
+        inp = sys.stdin.readline().replace('\n', '')
+        decode(inp)
+
+  def test(self, model=None, dataset=None, verbose=True, in_training=False):
     config = self.config
-                  
     if dataset is None:
-      if self.dataset.test is None:
-        self.dataset.test = self.dataset_type(
-          self.config.dataset_path.test, self.vocab)
       dataset = self.dataset.test
 
     _, test_filename = common.separate_path_and_filename(
       self.config.dataset_path.test)
 
-    if model is None:
-        model = self.create_model(
-          self.sess, self.config, self.vocab, 
-          checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
-        test_filename = '%s.best' % (test_filename)
-        output_types = None
-    else:
-      test_filename = '%s.%02d' % (test_filename, model.epoch.eval())
-      output_types= ['all']
+    if model is None: 
+      model = self.create_model(
+        self.sess, self.config, self.vocab, 
+        checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
+ 
+    test_filename = '%s.%02d' % (test_filename, model.epoch.eval()) if in_training else '%s.best' % (test_filename)
+    output_types = ['all'] if in_training else None 
 
     batches = dataset.get_batch(
       1, input_max_len=None, 
@@ -189,7 +188,7 @@ class Manager(object):
                                        verbose=verbose, 
                                        target_path_prefix=test_output_path,
                                        output_types=output_types)
-    if summary is not None:
+    if in_training:
       self.summary_writer.add_summary(summary, model.epoch.eval())
     return df
 

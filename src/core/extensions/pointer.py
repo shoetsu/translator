@@ -72,27 +72,29 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
   states = [initial_state]
   outputs = []
   pointed_idxs = []
-
-  for i, d in enumerate(tf.unstack(decoder_inputs, axis=1)):
-    with tf.name_scope('Decode_%d' % i):
-      if i > 0:
-        tf.get_variable_scope().reuse_variables()
-      pointed_idx = d
-      # in testing, inputs to decoder won't be used except the first one.
-      if feed_prev and i > 0:
-        # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
-        pointed_idx = tf.argmax(output, axis=1, output_type=tf.int32)
-      pointed_idxs.append(pointed_idx)
-      with tf.name_scope('copy_from_encoder_inputs'):
-        pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
-        inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
-        inp = tf.stop_gradient(inp)
-      output, state = cell(inp, states[-1])
-      with tf.name_scope('attention_weight'):
-        output = attention_weight(output)
-      #print 'output', output
-      states.append(state)
-      outputs.append(output)
-  outputs = tf.stack(outputs, axis=1)
-  states = tf.stack(states, axis=1)
+  with tf.name_scope('Decode_Timestep'):
+    for i, d in enumerate(tf.unstack(decoder_inputs, axis=1)):
+      with tf.name_scope('Decode_%d' % i):
+        if i > 0:
+          tf.get_variable_scope().reuse_variables()
+        pointed_idx = d
+        # in testing, inputs to decoder won't be used except the first one.
+        if feed_prev and i > 0:
+          # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
+          pointed_idx = tf.argmax(output, axis=1, output_type=tf.int32)
+        pointed_idxs.append(pointed_idx)
+        with tf.name_scope('copy_from_encoder_inputs'):
+          pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
+          inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
+          inp = tf.stop_gradient(inp)
+        output, state = cell(inp, states[-1])
+        with tf.name_scope('attention_weight'):
+          output = attention_weight(output)
+        #print 'output', output
+        states.append(state)
+        outputs.append(output)
+  with tf.name_scope('outputs'):
+    outputs = tf.stack(outputs, axis=1)
+  with tf.name_scope('states'):
+    states = tf.stack(states, axis=1)
   return outputs, states, pointed_idxs

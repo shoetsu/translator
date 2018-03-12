@@ -69,6 +69,29 @@ class VocabularyBase(object):
   def size(self):
     return len(self.vocab)
 
+  # def create_vocab(self, token_list, vocab_path):
+  #   # Create vocab from a list of words.
+  #   start_vocab = START_VOCAB
+  #   rev_vocab = OrderedSet(start_vocab + token_list) 
+  #   with open(vocab_path, 'w') as f:
+  #     f.write('\n'.join(list(rev_vocab) + '\n'))
+  #   return rev_vocab
+
+  # def init_vocab(self, token_list, vocab_path, skip_first=False):
+  #   rev_vocab = self.load_vocab(vocab_path, skip_first=skip_first)
+  #   if rev_vocab is None:
+  #     rev_vocab = self.create_vocab()
+
+  #   vocab = collections.OrderedDict()
+  #   for i,t in enumerate(rev_vocab):
+  #     vocab[t] = i
+  #   return vocab, rev_vocab
+
+
+  # def load_vocab(vocab_path, skip_first=False):
+  #   pass
+  #   #with open(vocab_path)
+
 
 class WordVocabularyBase(VocabularyBase):
   def id2token(self, _id):
@@ -208,12 +231,4 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
 class FeatureVocab(WordVocabularyBase):
   def __init__(self, rev_vocab):
     self.vocab, self.rev_vocab = self.init_vocab(rev_vocab)
-
-  def init_vocab(self, rev_vocab):
-    start_vocab = START_VOCAB
-    rev_vocab = OrderedSet(start_vocab + rev_vocab) 
-    vocab = collections.OrderedDict()
-    for i,t in enumerate(rev_vocab):
-      vocab[t] = i
-    return vocab, rev_vocab
 

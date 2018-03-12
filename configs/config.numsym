@@ -33,6 +33,7 @@ dataset_type=NumSymbolizePriceDataset
 
 dataset_path {
   test = dataset/test.annotated.csv
+  valid = dataset/test.annotated.csv
   #train = dataset/weak_label_9800_sep.csv
   train = dataset/train.annotated.csv
   #train = dataset/mixed.train.csv
