@@ -8,7 +8,7 @@ num_columns=4
 num_train_data=0
 
 # Training.
-max_to_keep = 10
+max_to_keep = 1
 max_epoch = 30
 max_gradient_norm = 5.0
 learning_rate = 0.001
@@ -21,23 +21,22 @@ batch_size=10
 
 # Structure.
 num_layers=1
-hidden_size = 50
-rnn_size=${hidden_size}
-#rnn_type=dynamic_rnn
+rnn_size=50
 rnn_type=bidirectional_dynamic_rnn
-#cell_type=BasicLSTMCell
 cell_type=GRUCell
 model_type=PointerNetwork
-#dataset_type=NumSymbolizePriceDataset
+#dataset_type=NumNormalizedPriceDataset
+dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
-dataset_type=PriceDatasetWithFeatures
+#dataset_type=PriceDatasetWithFeatures
 
 dataset_path {
   test = dataset/test.annotated.csv
   valid = dataset/test.annotated.csv
   #train = dataset/weak_label_9800_sep.csv
-  train = dataset/train.annotated.csv
-  #train = dataset/mixed.train.csv
+  #train = dataset/train.annotated.csv
+  train = dataset/train.large.csv
+  #train = dataset/train.large.only_dollar.csv
 }
 
 #Pretrained embeddings.

@@ -39,10 +39,10 @@ class Manager(object):
         self.config.embeddings, 
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase) if vocab is None else vocab
-
       self.dataset = self.dataset_type(
         self.config.dataset_path, self.vocab,
         num_train_data=self.config.num_train_data, no_train=args.mode!='train')
+
 
 
   def get_config(self, args):
@@ -116,7 +116,7 @@ class Manager(object):
       df = self.test(model=model, dataset=self.dataset.valid,
                      in_training=True)
       average_accuracy = np.mean(df.values.tolist()[0])
-      if epoch == 0 or average_accuracy > max(testing_results):
+      if len(testing_results) == 0 or average_accuracy > max(testing_results):
         save_as_best = True
         best_epoch = epoch
         best_result = average_accuracy
@@ -129,27 +129,28 @@ class Manager(object):
     return
 
   def debug(self):
-    config = self.config
-    batches = self.dataset.train.get_batch(1, input_max_len=config.input_max_len, output_max_len=config.output_max_len, shuffle=False)
-    model.debug(batches)
+    pass
 
   def demo(self, model=None, inp=None):
-    dataset = self.dataset_type
     if model is None:
       model = self.create_model(
         self.sess, self.config, self.vocab, 
         checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
 
-    def decode(inp):
-      inp_origin = [_BOS] + self.vocab.tokenizer(inp, normalize_digits=False)
-      inp_normalized = [_BOS] + self.vocab.tokenizer(inp)
-      batch = datasets.create_demo_batch(self.vocab.tokens2ids(inp_normalized), 
-                                         self.config.output_max_len,
-                                         num_targets=self.config.num_columns)
+    def decode(origin_inp):
+      origin_inp = [origin_inp]
+      demo_data = datasets.create_demo_batch(
+        origin_inp, self.dataset_type, self.vocab)
+      batch = demo_data.get_batch(1, output_max_len=self.config.output_max_len, 
+                                  shuffle=False) 
       predictions = model.test(batch)
-      inp, _, pred = datasets.ids2tokens(inp_origin, None, predictions[0])
+      origin_inp = demo_data.original_sources[0]
+      normalized_inp, _ = demo_data.symbolized
+      normalized_inp = demo_data.vocab.ids2tokens(normalized_inp[0])
+      pred = datasets.find_token_from_sentence(predictions[0], origin_inp)
+      inp = datasets.remove_special_tokens(origin_inp)
       sys.stdout.write("Source      :\t%s\n" % ' '.join(inp))
-      sys.stdout.write("Source(unk) :\t%s\n" % ' '.join(inp_normalized))
+      sys.stdout.write("Source(unk) :\t%s\n" % ' '.join(normalized_inp))
       sys.stdout.write("Target      :\t%s\n" % ' | '.join(pred))
 
     if inp:
@@ -174,10 +175,11 @@ class Manager(object):
         checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
  
     test_filename = '%s.%02d' % (test_filename, model.epoch.eval()) if in_training else '%s.best' % (test_filename)
-    output_types = ['all'] if in_training else None 
+    #output_types = ['overall'] if in_training else None 
+    output_types = None
 
     batches = dataset.get_batch(
-      1, input_max_len=None, 
+      config.batch_size, input_max_len=None, 
       output_max_len=config.output_max_len, shuffle=False)
     predictions = model.test(batches)
     epoch = model.epoch.eval()

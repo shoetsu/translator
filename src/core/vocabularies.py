@@ -25,8 +25,14 @@ START_VOCAB = [_PAD, _BOS, _EOS, _UNK]
 UNDISPLAYED_TOKENS = [_PAD, _BOS, _EOS]
 
 def separate_numbers(sent):
-  # for some reason nltk.tokenizer fails to separate numbers (e.g. 6.73you)
-  for m in re.findall("(\D*)(\d?[0-9\,\.]*\d)(\D*)", sent):
+  '''
+  Since for some reason nltk.tokenizer fails to separate numbers (e.g. 6.73you),
+  manually separate them.
+  Args:
+     sent: a string.
+  '''
+  for m in re.findall("(\D*)(\d?[0-9\,\.]*\d)(\D*?)", sent):
+  #for m in re.findall("(\D*)(\d?[0-9\,\.]*\d)(\D*)", sent):
     m = [x for x in m if x]
     sent = sent.replace(''.join(m), ' ' + ' '.join(m)+ ' ')
     sent = ' '.join(sent.split())

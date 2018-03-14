@@ -91,9 +91,9 @@ class PointerNetwork(ModelBase):
 
       ds_name = 'Decoder' if conf.share_decoder else 'Decoder%d' % i 
       with tf.variable_scope(ds_name) as scope:
-        d_cell = setup_cell(conf.cell_type, conf.hidden_size, conf.num_layers,
+        d_cell = setup_cell(conf.cell_type, conf.rnn_size, conf.num_layers,
                             keep_prob=self.keep_prob)
-        teacher_forcing = conf.teacher_forcing if 'teacher_forcing' in conf else True
+        teacher_forcing = conf.teacher_forcing if 'teacher_forcing' in conf else False
         d_outputs, predictions, copied_inputs = setup_decoder(
           d_outputs_ph, e_inputs_emb, e_state, attention_states, d_cell, 
           batch_size, output_max_len, scope=scope, 
