@@ -21,6 +21,7 @@ tf_config = tf.ConfigProto(
 default_config = common.recDotDict({
   'share_encoder': True,
   'share_decoder': False,
+  'target_columns': ['LB', 'UB', 'Currency', 'Rate']
 })
 
 class Manager(object):
@@ -34,13 +35,13 @@ class Manager(object):
     sys.stderr.write(str(self.config) + '\n')
 
     self.dataset_type = getattr(datasets, self.config.dataset_type)
-    if not args.interactive:
+    if True or not args.interactive:
       self.vocab = WordVocabularyWithEmbedding(
         self.config.embeddings, 
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase) if vocab is None else vocab
       self.dataset = self.dataset_type(
-        self.config.dataset_path, self.vocab,
+        self.config.dataset_path, self.vocab, self.config.target_columns,
         num_train_data=self.config.num_train_data, no_train=args.mode!='train')
 
 
@@ -222,22 +223,22 @@ class Manager(object):
                                                 sess.graph)
     return m
 
-  def evaluate(self):
-    dataset = self.dataset_type(
-      self.config.dataset_path.test, self.vocab)
-    index, sources, targets = dataset.raw_data
-    predictions = []
+  # def evaluate_other_results(self):
+  #   dataset = self.dataset_type(
+  #     self.config.dataset_path.test, self.vocab)
+  #   index, sources, targets = dataset.raw_data
+  #   predictions = []
 
-    import pandas as pd
-    for l in pd.read_csv(args.evaluate_data_path).values.tolist():
-      idx, _, lb, ub, cur, rate = l
-      if idx not in index:
-        continue
-      else:
-        predictions.append([lb, ub, cur, rate])
-    df, _ = dataset.show_results(sources, targets, predictions, 
-                                 prediction_is_index=False)
-    print df
+  #   import pandas as pd
+  #   for l in pd.read_csv(args.evaluate_data_path).values.tolist():
+  #     idx, _, lb, ub, cur, rate = l
+  #     if idx not in index:
+  #       continue
+  #     else:
+  #       predictions.append([lb, ub, cur, rate])
+  #   df, _ = dataset.show_results(sources, targets, predictions, 
+  #                                prediction_is_index=False)
+  #   print df
 
 def main(args):
   random.seed(0)

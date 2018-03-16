@@ -1,33 +1,32 @@
 # Text processing.
-input_max_len = 30
-output_max_len = 5
-#vocab_size = 30000
-vocab_size = 0
-lowercase=true
-num_columns=4
+input_max_len = 30      # The maximum length of the input sentence in training.
+output_max_len = 5      # The maximum length of the output label.
+vocab_size = 0          # The maximum size of the vocabulary. if 0, use all.
+lowercase=true          # Whether to convert words into lowercase or not.
 num_train_data=0
+target_columns=[LB,UB,Currency,Rate] # The columns to be used. They all must be the same as the name of columns in the dataset.
 
-# Training.
-max_to_keep = 1
-max_epoch = 30
+# Training hyperparameters.
+max_to_keep = 1         # The number of checkpoints kept.
+max_epoch = 30          # The number of epochs in training.
 max_gradient_norm = 5.0
 learning_rate = 0.001
 decay_rate = 0.999
 decay_frequency = 100
-dropout_rate=0.2
-train_embedding=true
-teacher_forcing=false
+dropout_rate=0.2        # The dropout ratio in training. 
+train_embedding=true    # Whether to retrain the pretrained embeddings or not.
+teacher_forcing=false   # 
 batch_size=10
 
 # Structure.
 num_layers=1
 rnn_size=50
-rnn_type=bidirectional_dynamic_rnn
+rnn_type=bidirectional_dynamic_rnn 
 cell_type=GRUCell
 model_type=PointerNetwork
 #dataset_type=NumNormalizedPriceDataset
-dataset_type=CurrencyNormalizedPriceDataset
-#dataset_type=PriceDataset
+#dataset_type=CurrencyNormalizedPriceDataset
+dataset_type=PriceDataset
 #dataset_type=PriceDatasetWithFeatures
 
 dataset_path {
@@ -35,8 +34,8 @@ dataset_path {
   valid = dataset/test.annotated.csv
   #train = dataset/weak_label_9800_sep.csv
   #train = dataset/train.annotated.csv
-  train = dataset/train.large.csv
-  #train = dataset/train.large.only_dollar.csv
+  #train = dataset/train.large.only_per.csv
+  train = dataset/train.mixed.rand_multi_range.csv
 }
 
 #Pretrained embeddings.

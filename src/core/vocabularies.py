@@ -159,7 +159,7 @@ class PredefinedVocabWithEmbeddingBase(object):
     start_vocab = START_VOCAB
     # if self.tokenizer.lowercase:
     #   start_vocab = [x.lower for x in lowercase]
-    pretrained = [self.load_vocab(c['path'], c['format'] == 'vec') for c in emb_configs]
+    pretrained = [self.load_vocab(c['path'], c['format'] == 'vec', vocab_size=vocab_size) for c in emb_configs]
     rev_vocab = common.flatten([e.keys() for e in pretrained])
     rev_vocab = OrderedSet(start_vocab + [self.tokenizer(w, flatten=True)[0] 
                                           for w in rev_vocab])
@@ -172,19 +172,22 @@ class PredefinedVocabWithEmbeddingBase(object):
     embeddings = np.array(embeddings)
     return vocab, rev_vocab, embeddings
 
-  def load_vocab(self, embedding_path, skip_first=True):
+  def load_vocab(self, embedding_path, skip_first=True, vocab_size=0):
     '''
     Load pretrained vocabularies and embeddings.
     '''
     sys.stderr.write("Loading word embeddings from {}...\n".format(embedding_path))
     embedding_dict = None
+    if vocab_size and skip_first:
+      vocab_size += 1
     with open(embedding_path) as f:
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
         #################3
         #if False and i ==100 :
-        if False and i==200:
+        #if False and i==200:
+        if vocab_size and i > vocab_size:
           break
         #################
         word_and_embedding = line.split()

@@ -6,7 +6,7 @@ usage() {
     exit 1
 }
 
-# optの解析 (argv, argc, opt_names, opt_valuesを設定)
+# parse other arguments. 
 source ./scripts/manually_getopt.sh $@
 
 if [ $argc -lt 2 ];then
@@ -20,6 +20,7 @@ config_path=${argv[2]}
 config_file=config
 log_file=$checkpoint_path/${mode}.log
 
+# Use the existing config in the checkpoint directory if there is, otherwise use configs/config as default.
 if [ "${config_path}" = "" ]; then
     if [ -e ${checkpoint_path}/${config_file} ]; then
 	config_path=${checkpoint_path}/${config_file}
@@ -28,20 +29,15 @@ if [ "${config_path}" = "" ]; then
 	#echo "specify config file when start training from scratch."
 	#exit 1
     fi
-# else
-#     if [ -e ${checkpoint_path}/${config_file} ]; then
-# 	config_path=${checkpoint_path}/${config_file}
-#     fi
 fi
 
-# 実行時オプションを優先(from manually_optget.sh)
+# Prioritize runtime options (parsed from 'scripts/manually_optget.sh')
 for i in $(seq 0 $(expr ${#opt_names[@]} - 1)); do
     name=${opt_names[$i]}
     value=${opt_values[$i]}
     eval $name=$value
 done;
 
-# get params from input args
 params_arr=(log_file interactive cleanup test_data_path evaluate_data_path debug batch_size)
 params=""
 

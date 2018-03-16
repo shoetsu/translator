@@ -62,13 +62,13 @@ class PointerNetwork(ModelBase):
       batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
-      self.w_embeddings = self.initialize_embeddings(
+      w_embeddings = self.initialize_embeddings(
         'Word', vocab.embeddings.shape, 
         initializer=tf.constant_initializer(vocab.embeddings),
         trainable=conf.train_embedding)
 
     with tf.variable_scope('WordEncoder') as scope:
-      word_encoder = WordEncoder(conf, self.w_embeddings, self.keep_prob,
+      word_encoder = WordEncoder(conf, w_embeddings, self.keep_prob,
                                       shared_scope=scope)
       e_inputs_emb = word_encoder.encode([self.e_inputs_ph])
 
@@ -84,7 +84,7 @@ class PointerNetwork(ModelBase):
     self.losses = []
     self.greedy_predictions = []
     self.copied_inputs = []
-    for i in range(conf.num_columns):
+    for i, col_name in enumerate(conf.target_columns):
       with tf.name_scope('DecoderOutput%d' % i):
         d_outputs_ph = tf.placeholder(
           tf.int32, [None, output_max_len], name="DecoderOutput")
@@ -177,3 +177,4 @@ class PointerNetwork(ModelBase):
     predictions = [np.concatenate(column_pred, axis=0) for column_pred in zip(*predictions)]
     predictions = list(zip(*predictions))
     return predictions
+
