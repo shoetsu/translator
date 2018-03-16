@@ -14,7 +14,5 @@ _trash
 tmp.py
 ref
 results
-dataset/*
-checkpoints/*
 docs
 *.ipynb
