@@ -11,3 +11,9 @@ pip install -r requirements.txt
   ./run.sh checkpoint_path [train|test] config_path
 ```
 
+
+
+#### Directories
+
+
+

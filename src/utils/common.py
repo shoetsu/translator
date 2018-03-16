@@ -48,6 +48,7 @@ def restore_to_tmpfile(sentences, tmp_dir='/tmp'):
 def get_pos(sents, output_path=None):
   suffix = '.pos'
   output_path = output_path + suffix
+  sys.stderr.write(output_path+'\n')
   if output_path and os.path.exists(output_path):
     sys.stderr.write("Reading the POS file...\n")
     pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (output_path)).split('\n\n')]
@@ -64,6 +65,13 @@ def get_pos(sents, output_path=None):
       os.system('cp %s %s' % (tmp_filepath + suffix, output_path))
     os.system('rm %s' % (tmp_filepath))
     os.system('rm %s%s' % (tmp_filepath, suffix))
+  try:
+    assert len(pos_tags) == len(sents)
+  except:
+    print  ("The length of POS and sources don't match each other. (%d, %d)"  % (len(pos_tags), len(sents)))
+    if output_path:
+      os.system('rm %s' % (output_path))
+    exit(1)
   return pos_tags
 
 def str2tuple(v):
@@ -122,7 +130,7 @@ def print_colored(sentence, idx_colored, color='red'):
       res.append(colored(s, color))
     else:
       res.append(s)
-  print " ".join(res)
+  print (" ".join(res))
 
 def colored(str_, color):
   '''
@@ -247,4 +255,4 @@ def get_config(filename):
   return pyhocon.ConfigFactory.parse_file(filename)
 
 def print_config(config):
-  print pyhocon.HOCONConverter.convert(config, "hocon")
+  print (pyhocon.HOCONConverter.convert(config, "hocon"))

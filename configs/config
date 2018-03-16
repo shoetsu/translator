@@ -15,18 +15,19 @@ decay_rate = 0.999
 decay_frequency = 100
 dropout_rate=0.2        # The dropout ratio in training. 
 train_embedding=true    # Whether to retrain the pretrained embeddings or not.
-teacher_forcing=false   # 
+teacher_forcing=false   #
 batch_size=10
 
 # Structure.
 num_layers=1
 rnn_size=50
-rnn_type=bidirectional_dynamic_rnn 
+rnn_type=bidirectional_dynamic_rnn
 cell_type=GRUCell
 model_type=PointerNetwork
 #dataset_type=NumNormalizedPriceDataset
 #dataset_type=CurrencyNormalizedPriceDataset
-dataset_type=PriceDataset
+#dataset_type=PriceDataset
+dataset_type=NumAndUnitNormalizedPriceDataset
 #dataset_type=PriceDatasetWithFeatures
 
 dataset_path {

@@ -38,7 +38,7 @@ for i in $(seq 0 $(expr ${#opt_names[@]} - 1)); do
     eval $name=$value
 done;
 
-params_arr=(log_file interactive cleanup test_data_path evaluate_data_path debug batch_size)
+params_arr=(log_file interactive cleanup test_data_path evaluate_data_path debug batch_size vocab_size)
 params=""
 
 

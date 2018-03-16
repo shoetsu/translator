@@ -34,15 +34,15 @@ class Manager(object):
 
     sys.stderr.write(str(self.config) + '\n')
 
-    self.dataset_type = getattr(datasets, self.config.dataset_type)
     if True or not args.interactive:
       self.vocab = WordVocabularyWithEmbedding(
         self.config.embeddings, 
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase) if vocab is None else vocab
-      self.dataset = self.dataset_type(
-        self.config.dataset_path, self.vocab, self.config.target_columns,
-        num_train_data=self.config.num_train_data, no_train=args.mode!='train')
+      self.dataset = getattr(datasets, self.config.dataset_type)(
+        self.config.dataset_type, self.config.dataset_path, 
+        self.config.num_train_data, 
+        self.vocab, self.config.target_columns)
 
 
 
@@ -141,7 +141,8 @@ class Manager(object):
     def decode(origin_inp):
       origin_inp = [origin_inp]
       demo_data = datasets.create_demo_batch(
-        origin_inp, self.dataset_type, self.vocab)
+        origin_inp, self.config.dataset_type, self.vocab, 
+        self.config.target_columns)
       batch = demo_data.get_batch(1, output_max_len=self.config.output_max_len, 
                                   shuffle=False) 
       predictions = model.test(batch)
@@ -280,6 +281,7 @@ if __name__ == "__main__":
   parser.add_argument("--test_data_path", default=None, type=str)
   parser.add_argument("--evaluate_data_path", default='dataset/baseline.complicated.csv', type=str)
   parser.add_argument("--batch_size", default=None, type=int)
+  parser.add_argument("--vocab_size", default=None, type=int)
   args  = parser.parse_args()
   main(args)
 
