@@ -1,12 +1,15 @@
 #!/bin/bash
 
-#input from shell
+# List of arguments that can be dynamically specified at runtime.
+# e.g. ./run.sh checkpoint/tmp test --test_data_path=dataset/test.another
+params_list=(log_file interactive cleanup test_data_path evaluate_data_path debug batch_size vocab_size)
+
 usage() {
     echo "Usage:$0 checkpoint_path mode [config_path]"
     exit 1
 }
 
-# parse other arguments. 
+# Parse dynamic arguments. 
 source ./scripts/manually_getopt.sh $@
 
 if [ $argc -lt 2 ];then
@@ -38,11 +41,8 @@ for i in $(seq 0 $(expr ${#opt_names[@]} - 1)); do
     eval $name=$value
 done;
 
-params_arr=(log_file interactive cleanup test_data_path evaluate_data_path debug batch_size vocab_size)
 params=""
-
-
-for param in ${params_arr[@]}; do 
+for param in ${params_list[@]}; do 
     if [ ! ${!param} = "" ]; then
 	params="${params} --${param}=${!param}"
     fi
