@@ -12,12 +12,13 @@ from core import models, datasets
 from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
 
 tf_config = tf.ConfigProto(
-  log_device_placement=False,
-  allow_soft_placement=True, 
+  log_device_placement=False, # If True, all the placement of variables will be logged. 
+  allow_soft_placement=True, # If True, it uses CPU instead of GPU to avoid causing errors if the specified GPU is occupied or not exists.
   gpu_options=tf.GPUOptions(
     allow_growth=True, # If False, all memories of the GPU will be occupied.
   )
 )
+#The default config for old models which don't have some recently added hyperparameters. (to be abolished in future)
 default_config = common.recDotDict({
   'share_encoder': True,
   'share_decoder': False,
@@ -28,7 +29,7 @@ class Manager(object):
   @common.timewatch()
   def __init__(self, args, sess, vocab=None):
     self.sess = sess
-    self.config = self.get_config(args)
+    self.config = self.load_config(args)
     self.mode = args.mode
     self.logger = common.logManager(handler=FileHandler(args.log_file)) if args.log_file else common.logManager()
 
@@ -44,9 +45,12 @@ class Manager(object):
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
 
-
-
-  def get_config(self, args):
+  def load_config(self, args):
+    '''
+    Load the config specified by args.config_path. The config will be copied into args.checkpoint_path if there is no config there. We can override a few hyperparameters in the config and being listed up on the bottom of this file by specifying as arguments when runnning this code.
+     e.g.
+        ./run.sh checkpoints/tmp test --batch_size=30
+    '''
     self.model_path = args.checkpoint_path
     self.summaries_path = self.model_path + '/summaries'
     self.checkpoints_path = self.model_path + '/checkpoints'
@@ -73,10 +77,11 @@ class Manager(object):
         sys.stdout = sys.__stdout__
     config = common.recDotDict(config)
 
+    # The default config for old models which don't have some recently added hyperparameters will be overwritten if a model has the corresponding hyperparameters.
     default_config.update(config)
     config = default_config
 
-    # Override configs by temporary args.
+    # Override configs by temporary args. They have higher priorities than those in the config of models, but won't be restored.
     if 'test_data_path' and args.test_data_path:
       config.dataset_path.test = args.test_data_path
     if 'batch_size' in args and args.batch_size:
@@ -85,10 +90,15 @@ class Manager(object):
       config.target_attribute = args.target_attribute
     if 'debug' in args:
       config.debug = args.debug
-    
     return config
 
   def save_model(self, model, save_as_best=False):
+    '''
+    Restore the trained model. 
+    Args: 
+      - model: The model object created by create_model().
+      - save_as_best: If True, the model in this epoch is copied as 'best' and will be used in testing.
+    '''
     checkpoint_path = self.checkpoints_path + '/model.ckpt'
     self.saver.save(self.sess, checkpoint_path, global_step=model.epoch)
     if save_as_best:
@@ -204,6 +214,10 @@ class Manager(object):
   @common.timewatch()
   def create_model(self, sess, config, vocab, 
                    checkpoint_path=None, cleanup=False):
+    ''' 
+    The latest checkpoint is automatically loaded if there is, otherwise create a model with flesh parameters.
+    '''
+    # Instatiate the model class specified by config.model_type and define the computation graph. This must be done before running tf.global_variables_initializer().
     with tf.variable_scope('', reuse=tf.AUTO_REUSE):
       m = getattr(models, config.model_type)(sess, config, vocab)
 
@@ -211,8 +225,10 @@ class Manager(object):
       ckpt = tf.train.get_checkpoint_state(self.checkpoints_path)
       checkpoint_path = ckpt.model_checkpoint_path if ckpt else None
 
-    self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
-                                #max_to_keep=config.max_to_keep)
+
+    # Load or create from scratch.
+    self.saver = tf.train.Saver(tf.global_variables(), 
+                                max_to_keep=config.max_to_keep)
     if checkpoint_path and os.path.exists(checkpoint_path + '.index'):
       sys.stderr.write("Reading model parameters from %s\n" % checkpoint_path)
       self.saver.restore(sess, checkpoint_path)
@@ -220,6 +236,7 @@ class Manager(object):
       sys.stderr.write("Created model with fresh parameters.\n")
       sess.run(tf.global_variables_initializer())
 
+    # List up all the defined variables and their shapes.
     variables_path = self.model_path + '/variables.list'
     with open(variables_path, 'w') as f:
       variable_names = sorted([v.name + ' ' + str(v.get_shape()) for v in tf.global_variables()])
@@ -240,8 +257,6 @@ def main(args):
       manager.train()
     elif args.mode == 'test':
       manager.test()
-    elif args.mode == 'evaluate':
-      manager.evaluate()
     elif args.mode == 'demo':
       manager.demo()
     elif args.mode == 'debug':

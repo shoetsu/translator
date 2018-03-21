@@ -11,22 +11,6 @@ import datasets as self_module
 
 EMPTY = '-' # token for empty label.
 
-# def find_entry(target_labels):
-#   """
-#   Convert label strings to sequence of values. 
-#   If there are two or more label pairs, use the first one.
-
-#   Args:
-#     - target_labels : A string with the following format.  
-#       (e.g. "(30|1|60|1|$|item):(100|0|-|-|$|hour)")
-#   """
-#   try:
-#     labels = [x.strip() for x in re.search('\((.+)\)', target_labels.split(':')[0]).group(1).split('|')]
-#   except:
-#     print ("There is an example with no label.")
-#     exit(1)
-#   return labels
-
 def postprocess(tokens):
   """
   Args:
@@ -232,6 +216,7 @@ class _PriceDataset(DatasetBase):
       inputs.append(inp)
       golds.append(gold)
       preds.append(pred)
+
     ###############################################################
     '''
     Functions freely defined to analyze results of complicated targets.
