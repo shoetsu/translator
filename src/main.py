@@ -21,7 +21,7 @@ tf_config = tf.ConfigProto(
 default_config = common.recDotDict({
   'share_encoder': True,
   'share_decoder': False,
-  'target_columns': ['LB', 'UB', 'Currency', 'Rate']
+  'target_columns': ['LB', 'UB', 'Unit', 'Rate']
 })
 
 class Manager(object):
@@ -41,8 +41,8 @@ class Manager(object):
         lowercase=self.config.lowercase) if vocab is None else vocab
       self.dataset = getattr(datasets, self.config.dataset_type)(
         self.config.dataset_type, self.config.dataset_path, 
-        self.config.num_train_data, 
-        self.vocab, self.config.target_columns)
+        self.config.num_train_data, self.vocab,
+        self.config.target_attribute, self.config.target_columns)
 
 
 
@@ -53,7 +53,7 @@ class Manager(object):
     self.tests_path = self.model_path + '/tests'
     self.config_path = args.config_path if args.config_path else self.model_path + '/config'
 
-    # Read and restore config
+    # Read and restore config if there is no existing config in the checkpoint.
     sys.stderr.write('Reading a config from %s ...\n' % (self.config_path))
     config = pyhocon.ConfigFactory.parse_file(self.config_path)
     config_restored_path = os.path.join(self.model_path, 'config')
@@ -81,8 +81,11 @@ class Manager(object):
       config.dataset_path.test = args.test_data_path
     if 'batch_size' in args and args.batch_size:
       config.batch_size = args.batch_size
+    if 'target_attribute' in args and args.target_attribute:
+      config.target_attribute = args.target_attribute
     if 'debug' in args:
       config.debug = args.debug
+    
     return config
 
   def save_model(self, model, save_as_best=False):
@@ -167,9 +170,10 @@ class Manager(object):
     config = self.config
     if dataset is None:
       dataset = self.dataset.test
+      #dataset = self.dataset.valid
 
     _, test_filename = common.separate_path_and_filename(
-      self.config.dataset_path.test)
+      dataset.path)
 
     if model is None: 
       model = self.create_model(
@@ -177,23 +181,24 @@ class Manager(object):
         checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
  
     test_filename = '%s.%02d' % (test_filename, model.epoch.eval()) if in_training else '%s.best' % (test_filename)
-    #output_types = ['overall'] if in_training else None 
     output_types = None
 
     batches = dataset.get_batch(
       config.batch_size, input_max_len=None, 
       output_max_len=config.output_max_len, shuffle=False)
     predictions = model.test(batches)
-    epoch = model.epoch.eval()
     index, sources, targets = dataset.raw_data
+    predictions = [datasets.find_token_from_sentence(p, s) for p,s in zip(predictions, sources)]
 
     test_output_path = os.path.join(self.tests_path, test_filename)
-    df, summary = dataset.show_results(sources, targets, predictions, 
-                                       verbose=verbose, 
-                                       target_path_prefix=test_output_path,
-                                       output_types=output_types)
+    df, scalar_summary = dataset.show_results(
+      sources, targets, predictions, verbose=verbose, 
+      target_path_prefix=test_output_path, output_types=output_types)
     if in_training:
-      self.summary_writer.add_summary(summary, model.epoch.eval())
+      self.summary_writer.add_summary(scalar_summary, model.epoch.eval())
+    #else:
+    #  self.summary_writer.add_summary(text_summary, model.epoch.eval())
+    
     return df
 
   @common.timewatch()
@@ -224,22 +229,6 @@ class Manager(object):
                                                 sess.graph)
     return m
 
-  # def evaluate_other_results(self):
-  #   dataset = self.dataset_type(
-  #     self.config.dataset_path.test, self.vocab)
-  #   index, sources, targets = dataset.raw_data
-  #   predictions = []
-
-  #   import pandas as pd
-  #   for l in pd.read_csv(args.evaluate_data_path).values.tolist():
-  #     idx, _, lb, ub, cur, rate = l
-  #     if idx not in index:
-  #       continue
-  #     else:
-  #       predictions.append([lb, ub, cur, rate])
-  #   df, _ = dataset.show_results(sources, targets, predictions, 
-  #                                prediction_is_index=False)
-  #   print df
 
 def main(args):
   random.seed(0)
@@ -278,10 +267,11 @@ if __name__ == "__main__":
   parser.add_argument("--cleanup", default=False, type=common.str2bool)
   parser.add_argument("--interactive", default=False, type=common.str2bool)
   parser.add_argument("--log_file", default=None, type=str)
+
+  # Arguments that can be dynamically overwritten if they're not None.
   parser.add_argument("--test_data_path", default=None, type=str)
-  parser.add_argument("--evaluate_data_path", default='dataset/baseline.complicated.csv', type=str)
   parser.add_argument("--batch_size", default=None, type=int)
-  parser.add_argument("--vocab_size", default=None, type=int)
+  parser.add_argument("--target_attribute", default=None, type=str)
   args  = parser.parse_args()
   main(args)
 

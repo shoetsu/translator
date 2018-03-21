@@ -50,9 +50,14 @@ class WordTokenizer(object):
     self.normalize_digits = normalize_digits
 
   def __call__(self, sent, normalize_digits=None, lowercase=None, flatten=None):
-    sent = sent.replace('\n', '')
-    sent = separate_numbers(sent)
-    sent = separate_symbols(sent)
+    try:
+      sent = sent.replace('\n', '')
+      sent = separate_numbers(sent)
+      sent = separate_symbols(sent)
+    except Exception as e:
+      print e
+      print sent
+      exit(1)
     normalize_digits = normalize_digits if normalize_digits is not None else self.normalize_digits
     lowercase = lowercase if lowercase is not None else self.lowercase
     if normalize_digits:
@@ -184,9 +189,6 @@ class PredefinedVocabWithEmbeddingBase(object):
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
-        #################3
-        #if False and i ==100 :
-        #if False and i==200:
         if vocab_size and i > vocab_size:
           break
         #################

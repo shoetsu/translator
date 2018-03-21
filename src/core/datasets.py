@@ -11,34 +11,38 @@ import datasets as self_module
 
 EMPTY = '-' # token for empty label.
 
-# Dictionaries for manual replacement.
-currency_names = ['yen', 'dollar', 'euro', 'flanc', 'pound']
-currency_names += [x+'s' for x in currency_names]
-currency_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
-normalized_currency_symbol = '$'
-normalized_currency_name = 'dollars'
-normalized_unit_name = 'unit'
+# def find_entry(target_labels):
+#   """
+#   Convert label strings to sequence of values. 
+#   If there are two or more label pairs, use the first one.
 
-def find_entry(target_labels):
+#   Args:
+#     - target_labels : A string with the following format.  
+#       (e.g. "(30|1|60|1|$|item):(100|0|-|-|$|hour)")
+#   """
+#   try:
+#     labels = [x.strip() for x in re.search('\((.+)\)', target_labels.split(':')[0]).group(1).split('|')]
+#   except:
+#     print ("There is an example with no label.")
+#     exit(1)
+#   return labels
+
+def postprocess(tokens):
   """
-  Convert label strings to sequence of values. 
-  If there are two or more label pairs, use the first one.
-
   Args:
-    - target_labels : A string with the following format.  
-      (e.g. "(30|1|60|1|$|item):(100|0|-|-|$|hour)")
+    - tokens : A list of words.
   """
-  try:
-    labels = [x.strip() for x in re.search('\((.+)\)', target_labels.split(':')[0]).group(1).split('|')]
-  except:
-    print ("There is an example with no label.")
-    exit(1)
-  return labels
+  # Postprocessing for normalizing numbers. (e.g. 40|million -> 40 Million)
+  def separate_concatenated_tokens(tokens): 
+    return common.flatten([x.split('|') for x in tokens])
 
-def remove_special_tokens(tokens):
-  special_tokens = [_BOS, _PAD]
-  return [x for x in tokens if x not in special_tokens]
+  def remove_special_tokens(tokens):
+    special_tokens = [_BOS, _PAD]
+    return [x for x in tokens if x not in special_tokens]
 
+  tokens = separate_concatenated_tokens(tokens)
+  tokens = remove_special_tokens(tokens)
+  return tokens
 
 def find_token_from_sentence(p_idxs, s_tokens):
   '''
@@ -56,24 +60,9 @@ def find_token_from_sentence(p_idxs, s_tokens):
     preds.append(pred)
   return preds
 
-def ids2tokens(s_tokens, t_tokens, p_idxs):
-  outs = []
-  preds = []
-  inp = [x for x in s_tokens if x not in [_BOS, _PAD]]
-  if t_tokens is not None:
-    for tt in t_tokens:
-      out = ' '.join([x for x in tt if x not in [_BOS, _PAD]])
-      outs.append(out)
-  for pp in p_idxs:
-    pred =  [s_tokens[k] for k in pp if len(s_tokens) > k]
-    pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
-    if not pred:
-      pred = EMPTY
-    preds.append(pred)
-  return inp, outs, preds
 
 def create_demo_batch(sentences, dataset_type, vocab, 
-                      target_columns, tmp_path='/tmp'):
+                      attribute_name, target_columns, tmp_path='/tmp'):
   '''
   Args:
     sentences: List of string.
@@ -95,7 +84,7 @@ def create_demo_batch(sentences, dataset_type, vocab,
   pathes = common.dotDict({'train': tmp_path, 'valid':tmp_path, 'test':tmp_path})
 
   num_training_sentences = 0 # Fake value.
-  dataset = getattr(self_module, dataset_type)(dataset_type, pathes, num_training_sentences, vocab, target_columns)
+  dataset = getattr(self_module, dataset_type)(dataset_type, pathes, num_training_sentences, vocab, attribute_name, target_columns)
   dataset.test.load_data()
   os.system('rm %s' % tmp_path)
   return dataset.test
@@ -104,12 +93,13 @@ class DatasetBase(object):
   pass
 
 class _PriceDataset(DatasetBase):
-  def __init__(self, data_path, vocab, target_columns, num_lines=0):
+  def __init__(self, data_path, vocab, target_attribute, target_columns, 
+               num_lines=0):
     self.path = data_path
     self.num_lines = num_lines 
+    self.target_attribute = target_attribute
     self.target_columns = target_columns
     self.vocab = vocab
-    self.tokenizer = vocab.tokenizer
 
     self.indices = []
     self.original_sources = []
@@ -119,32 +109,33 @@ class _PriceDataset(DatasetBase):
 
   def load_data(self):
     # lazy loading to save time.
-    if self.sources:
-      return
     sys.stderr.write('Loading dataset from %s ...\n' % (self.path))
-    data = pd.read_csv(self.path)
+    data = pd.read_csv(self.path).fillna(EMPTY)
 
     if self.num_lines:
       data = data[:self.num_lines]
   
     text_data = data['sentence']
     # For copying, keep unnormalized sentences too.
-    self.original_sources = [[_BOS] + self.tokenizer(l, normalize_digits=False) for l in text_data]
+    self.original_sources = [[_BOS] + self.vocab.tokenizer(l, normalize_digits=False) for l in text_data]
     self.indices = data['index'].values
-    self.sources = [[_BOS] + self.tokenizer(l) for l in text_data]
+    self.sources = [[_BOS] + self.vocab.tokenizer(l) for l in text_data]
 
-    #targets = [[self.tokenizer(x, normalize_digits=False) for x in find_entry(l)] for l in label_data]
     self.all_columns = [x for x in data.columns if x not in ['index', 'sentence']]
+    if not self.target_columns:
+      self.target_columns = self.all_columns
     for c in self.target_columns:
       if not c in self.all_columns:
         raise ValueError('The name of column must be in the label columns of data. (\'%s\' not found in %s)' % (c, str(self.all_columns)))
-    self.targets = [[self.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
+    self.targets = [[self.vocab.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
     self.targets = list(zip(*self.targets)) # to batch-major.
 
   def get_batch(self, batch_size,
                 input_max_len=None, output_max_len=None, shuffle=False):
+    if not self.sources:
+      self.load_data() # lazy loading.
 
-    self.load_data() # lazy loading.
+
     sources, targets = self.symbolized
     if input_max_len:
       paired = [(s,t) for s,t in zip(sources, targets) if not len(s) > input_max_len ]
@@ -176,8 +167,7 @@ class _PriceDataset(DatasetBase):
   def raw_data(self):
     return self.indices, self.original_sources, self.targets
 
-  @staticmethod 
-  def manual_replace(s):
+  def manual_replace(self, s):
     # For easy inheritance.
     return s
 
@@ -199,30 +189,49 @@ class _PriceDataset(DatasetBase):
   #   return dataset
 
   def show_results(self, original_sources, targets, predictions, 
-                   verbose=True, #prediction_is_index=True, 
+                   verbose=True, 
                    target_path_prefix=None, output_types=None):
-    test_inputs_tokens, _ = self.symbolized
+    """
+      Args:
+       - original_sources : Separated words in input sentences. 
+         e.g. [['it', 'costs', '$' '30'], ... ]
+       - targets : Human labels. Values of each column must be an list of str.
+         e.g. [(['2', 'million'], ['2', 'million'], ['$'], ['year']), ...]
+       - predictions : Predictions. Same as targets.
+         e.g. [(['2'], ['2', 'million'], ['$'], ['-']), ...]
+    """
+    if type(original_sources[0]) == str:
+      original_sources = [s.split() for s in original_sources]
+    if type(targets[0][0]) == str:
+      targets = [[c.split() for c in t] for t in targets]
+    if type(predictions[0][0]) == str:
+      predictions = [[c.split() for c in p] for p in predictions]
     golds = []
     preds = []
     try:
       assert len(original_sources) == len(targets) == len(predictions)
     except:
-      print (len(original_sources), len(targets), len(predictions))
+      print "The lengthes of sentences, human labels, predictions must be same. (%d, %d, %d)" % (len(original_sources), len(targets), len(predictions))
       exit(1)
 
     inputs = [] # Original texts.
-    token_inputs = [] # Normalized texts with _UNK.
-    for i, (raw_s, raw_t, p) in enumerate(zip(original_sources, targets, predictions)):
-      inp = remove_special_tokens(raw_s)
-      gold = OrderedDict({col:' '.join(remove_special_tokens(t)) for col, t in zip(self.all_columns, raw_t)})
-      token_inp = self.vocab.ids2tokens(test_inputs_tokens[i])
+
+    # Normalized texts with _UNK.
+    if self.vocab:
+      test_inputs_tokens, _ = self.symbolized
+      token_inputs = [self.vocab.ids2tokens(x) for x in test_inputs_tokens]
+    else:
+      token_inputs = [[] for _ in range(len(original_sources))]
+
+
+    for i, (s, t, p) in enumerate(zip(original_sources, targets, predictions)):
+      inp = postprocess(s)
+      gold = OrderedDict({col:' '.join(postprocess(t)) for col, t in zip(self.all_columns, t)})
       #if prediction_is_index:
-      pred = OrderedDict({col:t for col, t in zip(self.target_columns, find_token_from_sentence(p, raw_s))})
+      pred = OrderedDict({col:' '.join(postprocess(p)) for col, p in zip(self.target_columns, p)})
       inputs.append(inp)
-      token_inputs.append(token_inp)
       golds.append(gold)
       preds.append(pred)
-
     ###############################################################
     '''
     Functions freely defined to analyze results of complicated targets.
@@ -241,16 +250,33 @@ class _PriceDataset(DatasetBase):
     ###############################################################
 
     lower_upper_success = lambda g, p: ('LB' not in p or g['LB'] == p['LB']) and ('UB' not in p or g['UB'] == p['UB'])
+    exact_cond = lambda g: g['LB'] == g['UB'] and g['LB'] != EMPTY
+    range_cond = lambda g: g['LB'] != g['UB'] and g['LB'] != EMPTY and g['UB'] != EMPTY
+    rate_cond = lambda g: g['Rate'] != EMPTY
+    multi_cond = lambda g: len(g['LB'].split(' ')) > 1 or len(g['UB'].split(' ')) > 1
+    less_cond = lambda g: g['LB'] == '-' and g['UB'] != '-'
+    more_cond = lambda g: g['LB'] != '-' and g['UB'] == '-'
+
     all_success = lambda g, p: tuple(g.values()) == tuple(p.values())
     rate_success = lambda g, p: 'Rate' not in p or g['Rate'] == p['Rate']
     conditions = [
       ('overall', (lambda g: True, all_success)),
-      ('range', (lambda g: g['LB'] != g['UB'] and g['LB'] != EMPTY and g['UB'] != EMPTY, lower_upper_success)),
-      ('range_moreless', (lambda g: g['LB'] != g['UB'], lower_upper_success)),
-      ('multi', (lambda g: len(g['LB'].split(' ')) > 1 or len(g['UB'].split(' ')) > 1, lower_upper_success)),
-      ('rate', (lambda g: g['Rate'] != EMPTY, rate_success)),
-      #('less', (lambda g: g[0] == '-' and g[1] != '-', lower_upper_success)),
-      #('more', (lambda g: g[0] != '-' and g[1] == '-', lower_upper_success)),
+      ('exact', (exact_cond, lower_upper_success)),
+      ('multi', (multi_cond, lower_upper_success)),
+      ('range', (range_cond, lower_upper_success)),
+      ('range_more_less', (lambda g: range_cond(g) or less_cond(g) or more_cond(g),
+                          lower_upper_success)),
+      ('less', (less_cond, lower_upper_success)),
+      ('more', (more_cond, lower_upper_success)),
+      ('rate', (rate_cond, rate_success)),
+      # ('exact_rate', (lambda g: exact_cond(g) and rate_cond(g), all_success)),
+      # ('exact_multi', (lambda g: exact_cond(g) and multi_cond(g), all_success)),
+      # ('range_rate', (lambda g: range_cond(g) and rate_cond(g), all_success)),
+      # ('range_multi', (lambda g: range_cond(g) and multi_cond(g), all_success)),
+      # ('more_rate', (lambda g: more_cond(g) and rate_cond(g), all_success)),
+      # ('more_multi', (lambda g: more_cond(g) and multi_cond(g), all_success)),
+      # ('less_rate', (lambda g: less_cond(g) and rate_cond(g), all_success)),
+      # ('less_multi', (lambda g: less_cond(g) and multi_cond(g), all_success)),
     ]
     if output_types is not None:
       conditions = [c for c in conditions if c[0] in output_types]
@@ -303,10 +329,13 @@ class _PriceDataset(DatasetBase):
       for col_name, val in zip(col_names, EM_rates):
         k = "%s/%s" % (type_name, col_name)
         summary_dict[k] = val
-    summary = tf_utils.make_summary(summary_dict)
-
-      #  pass
-    return df_sums[0], summary
+    scalar_summary = tf_utils.make_summary(summary_dict)
+    
+    # header = ['sentence', 'human', 'prediction']
+    # text_summary = [tf.summary.text(h, tf.convert_to_tensor(df_row_all[h].tolist())) for h in header]
+    # text_summary = tf.summary.merge(text_summary)
+    #   #  pass
+    return df_sums[0], scalar_summary #, text_summary 
 
   def summarize(self, inputs, token_inputs, _golds, _preds, cf, 
                 output_as_csv=False):
@@ -357,7 +386,8 @@ class _PriceDataset(DatasetBase):
         succ_or_fail = 'EM_Success' if is_success else "EM_Failure"
         sys.stdout.write('<%d> (%s)\n' % (i, succ_or_fail))
         sys.stdout.write('Test input       :\t%s\n' % (inp))
-        sys.stdout.write('Test input (unk) :\t%s\n' % (token_inp))
+        if token_inp:
+          sys.stdout.write('Test input (unk) :\t%s\n' % (token_inp))
         sys.stdout.write('Human label      :\t%s\n' % (g))
         sys.stdout.write('Test prediction  :\t%s\n' % (p))
       print ('')
@@ -377,8 +407,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
     )
     self.sources = self.original_sources
 
-  @staticmethod
-  def manual_replace(s, idx):
+  def manual_replace(self, s, idx):
     # Replace the token on a certain index to 0. These indices are those of the tokens with 'CD' POS.
     return [x if i not in idx else '0' for i, x in enumerate(s)]
 
@@ -396,7 +425,12 @@ class _NumNormalizedPriceDataset(_PriceDataset):
     targets = []
     num_indices = []
     for s, t, p in zip(_sources, _targets, _pos):
-      assert len(s) == len(p)
+      try:
+        assert len(s) == len(p)
+      except:
+        sys.stderr.write('Source:' + ' '.join(s) + '\n')
+        sys.stderr.write('POS:' + ' '.join(p) + '\n')
+        raise Exception('The sources and their POS must be same. (%d != %d)' % (len(s), len(p)))
       new_s = []
       tmp = []
       idx = []
@@ -419,20 +453,46 @@ class _NumNormalizedPriceDataset(_PriceDataset):
       num_indices.append(idx)
     return sources, targets, num_indices
 
-class _CurrencyNormalizedPriceDataset(_PriceDataset):
-  @staticmethod
-  def manual_replace(s):
-    s = [x if x not in currency_names else normalized_currency_name for x in s]
-    s = [x if x not in currency_symbols else normalized_currency_symbol for x in s]
-    return s
 
-class _NumAndUnitNormalizedPriceDataset(_NumNormalizedPriceDataset):
-  @staticmethod
-  def manual_replace(s, idx):
-    s = _NumNormalizedPriceDataset.manual_replace(s, idx)
-    unit_tokens = currency_names + currency_symbols
-    s = [x if x not in unit_tokens else normalized_unit_name for x in s]
-    #s = _CurrencyNormalizedPriceDataset.manual_replace(s)
+# Dictionaries for manual replacement.
+def unit_normalize(s, target_attribute):
+  normalized_name = 'unit'
+  if target_attribute == 'Price':
+    unit_names = ['yen', 'dollar', 'euro', 'flanc', 'pound']
+    unit_names += [x+'s' for x in unit_names]
+    unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
+  elif target_attribute == 'Weight':
+    unit_names = ['kg', 'pound']
+    unit_symbols = []
+  else:
+    raise ValueError('\'args.target_attribute\' must be in the list [\'Price\', \'Weight\']. (It is \'%s\' now.)' % target_attribute)
+
+  s = [x if x not in unit_names else normalized_name for x in s]
+  s = [x if x not in unit_symbols else normalized_name for x in s]
+  return s
+
+def attribute_normalize(s, target_attribute):
+  normalized_name = 'attribute'
+  if target_attribute == 'Price':
+    attribute_names = ['price']
+    attribute_names += [x + 's' for x in attribute_names]
+  elif target_attribute == 'Weight':
+    attribute_names = ['weight']
+    attribute_names += [x + 's' for x in attribute_names]
+
+  s = [x if x not in attribute_names else normalized_name for x in s]
+  return s
+
+class _UnitNormalizedPriceDataset(_PriceDataset):
+  def manual_replace(self, s):
+    return unit_normalize(s, self.target_attribute)
+
+
+class _AllNormalizedPriceDataset(_NumNormalizedPriceDataset):
+  def manual_replace(self, s, idx):
+    s = _NumNormalizedPriceDataset.manual_replace(self, s, idx)
+    s = unit_normalize(s, self.target_attribute)
+    s = attribute_normalize(s, self.target_attribute)
     return s
 
 
@@ -479,7 +539,7 @@ class NumNormalizedPriceDataset(PackedDatasetBase):
 class CurrencyNormalizedPriceDataset(PackedDatasetBase):
   pass
 
-class NumAndUnitNormalizedPriceDataset(PackedDatasetBase):
+class AllNormalizedPriceDataset(PackedDatasetBase):
   pass
 
 # class PriceDatasetWithFeatures(PackedDatasetBase):
