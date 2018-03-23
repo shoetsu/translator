@@ -18,7 +18,8 @@ decay_rate = 0.999      #
 decay_frequency = 100   #
 dropout_rate=0.2        # The dropout ratio in training. 
 train_embedding=true    # Whether to retrain the pretrained embeddings or not.
-teacher_forcing=false   # Whether to force the model to input the gold target labels in training regardless of the model's choice .
+teacher_forcing=false   # Whether to force the model to input the gold target labels in training regardless of the model's choice.
+share_decoder=false
 batch_size=10           # Batch size.
 
 # Structure.

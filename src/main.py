@@ -20,7 +20,6 @@ tf_config = tf.ConfigProto(
 )
 #The default config for old models which don't have some recently added hyperparameters. (to be abolished in future)
 default_config = common.recDotDict({
-  'share_encoder': True,
   'share_decoder': False,
   'target_columns': ['LB', 'UB', 'Unit', 'Rate']
 })
@@ -47,7 +46,7 @@ class Manager(object):
 
   def load_config(self, args):
     '''
-    Load the config specified by args.config_path. The config will be copied into args.checkpoint_path if there is no config there. We can override a few hyperparameters in the config and being listed up on the bottom of this file by specifying as arguments when runnning this code.
+    Load the config specified by args.config_path. The config will be copied into args.checkpoint_path if there is no config there. We can overwrite a few hyperparameters in the config and being listed up on the bottom of this file by specifying as arguments when runnning this code.
      e.g.
         ./run.sh checkpoints/tmp test --batch_size=30
     '''
@@ -68,6 +67,20 @@ class Manager(object):
     if not os.path.exists(self.tests_path):
       os.makedirs(self.tests_path)
 
+    # Overwrite configs by temporary args. They have higher priorities than those in the config of models.
+    if 'dataset_type' in args and args.dataset_type:
+      config['dataset_type'] = args.dataset_type
+    if 'train_data_path' in args and args.train_data_path:
+      config['dataset_path']['train'] = args.train_data_path
+    if 'test_data_path' in args and args.test_data_path:
+      config['dataset_path']['test'] = args.test_data_path
+    if 'vocab_size' in args and args.vocab_size:
+      config['vocab_size'] = args.vocab_size
+    if 'batch_size' in args and args.batch_size:
+      config['batch_size'] = args.batch_size
+    if 'target_attribute' in args and args.target_attribute:
+      config['target_attribute'] = args.target_attribute
+
     if args.cleanup or not os.path.exists(config_restored_path):
       sys.stderr.write('Restore the config to %s ...\n' % (config_restored_path))
 
@@ -81,15 +94,7 @@ class Manager(object):
     default_config.update(config)
     config = default_config
 
-    # Override configs by temporary args. They have higher priorities than those in the config of models, but won't be restored.
-    if 'test_data_path' and args.test_data_path:
-      config.dataset_path.test = args.test_data_path
-    if 'batch_size' in args and args.batch_size:
-      config.batch_size = args.batch_size
-    if 'target_attribute' in args and args.target_attribute:
-      config.target_attribute = args.target_attribute
-    if 'debug' in args:
-      config.debug = args.debug
+    print config
     return config
 
   def save_model(self, model, save_as_best=False):
@@ -278,14 +283,16 @@ if __name__ == "__main__":
   parser.add_argument("mode")
   parser.add_argument("config_path")
   
-  parser.add_argument("--debug", default=False, type=common.str2bool)
   parser.add_argument("--cleanup", default=False, type=common.str2bool)
   parser.add_argument("--interactive", default=False, type=common.str2bool)
   parser.add_argument("--log_file", default=None, type=str)
 
   # Arguments that can be dynamically overwritten if they're not None.
+  parser.add_argument("--dataset_type", default=None, type=str)
+  parser.add_argument("--train_data_path", default=None, type=str)
   parser.add_argument("--test_data_path", default=None, type=str)
   parser.add_argument("--batch_size", default=None, type=int)
+  parser.add_argument("--vocab_size", default=None, type=int)
   parser.add_argument("--target_attribute", default=None, type=str)
   args  = parser.parse_args()
   main(args)

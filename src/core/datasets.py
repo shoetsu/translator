@@ -196,6 +196,7 @@ class _PriceDataset(DatasetBase):
       assert len(original_sources) == len(targets) == len(predictions)
     except:
       print "The lengthes of sentences, human labels, predictions must be same. (%d, %d, %d)" % (len(original_sources), len(targets), len(predictions))
+      print predictions
       exit(1)
 
     inputs = [] # Original texts.
@@ -249,8 +250,7 @@ class _PriceDataset(DatasetBase):
       ('exact', (exact_cond, lower_upper_success)),
       ('multi', (multi_cond, lower_upper_success)),
       ('range', (range_cond, lower_upper_success)),
-      ('range_more_less', (lambda g: range_cond(g) or less_cond(g) or more_cond(g),
-                          lower_upper_success)),
+      #('range_more_less', (lambda g: range_cond(g) or less_cond(g) or more_cond(g),lower_upper_success)),
       ('less', (less_cond, lower_upper_success)),
       ('more', (more_cond, lower_upper_success)),
       ('rate', (rate_cond, rate_success)),
@@ -337,7 +337,9 @@ class _PriceDataset(DatasetBase):
     for i, (inp, token_inp, g, p) in enumerate(zip(inputs, token_inputs, _golds, _preds)):
       if not cf[0](g):
         continue
-      is_success = cf[1](g, p)
+      #is_success = cf[1](g, p)
+      is_success = OrderedDict([(col, g[col] == p[col]) for col in self.target_columns])
+      
       # Output only the labels in 'target_columns'.
       g = [g[col] for col in self.target_columns] 
       p = [p[col] for col in self.target_columns] 
@@ -368,7 +370,9 @@ class _PriceDataset(DatasetBase):
       print (df_sum.to_csv())
     else:
       for i, is_success, inp, token_inp, g, p in res:
-        succ_or_fail = 'EM_Success' if is_success else "EM_Failure"
+        #succ_or_fail = 'EM_Success' if is_success else "EM_Failure"
+        succ_or_fail = ['%s_Success' % k if v else '%s_Failure' % k for k,v in is_success.items()] 
+        succ_or_fail = ', '.join(succ_or_fail)
         sys.stdout.write('<%d> (%s)\n' % (i, succ_or_fail))
         sys.stdout.write('Test input       :\t%s\n' % (inp))
         if token_inp:
@@ -442,12 +446,12 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 # Dictionaries for manual replacement.
 def unit_normalize(s, target_attribute):
   normalized_name = 'unit'
-  if target_attribute == 'Price':
+  if target_attribute.lower() == 'price':
     unit_names = ['yen', 'dollar', 'euro', 'flanc', 'pound']
     unit_names += [x+'s' for x in unit_names]
     unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
-  elif target_attribute == 'Weight':
-    unit_names = ['kg', 'pound']
+  elif target_attribute.lower() == 'weight':
+    unit_names = ['kg', 'g', 'gram', 'grams', 'pounds', 'tons', 'ounce', 'lb', 'lbs', 'gallon', 'gallons']
     unit_symbols = []
   else:
     raise ValueError('\'args.target_attribute\' must be in the list [\'Price\', \'Weight\']. (It is \'%s\' now.)' % target_attribute)
