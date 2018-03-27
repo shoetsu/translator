@@ -240,6 +240,56 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
 
 
 class FeatureVocab(WordVocabularyBase):
-  def __init__(self, rev_vocab):
-    self.vocab, self.rev_vocab = self.init_vocab(rev_vocab)
+  def __init__(self, vocab_path, source):
+    if source and type(source[0]) not in [str, unicode]:
+      source = common.flatten(source)
+    self.tokenizer = lambda x: [x]
+    self.vocab, self.rev_vocab = self.init_vocab(vocab_path, source)
 
+  def init_vocab(self, vocab_path, source, vocab_size=0):
+    if os.path.exists(vocab_path):
+      sys.stderr.write('Loading word vocabulary from %s...\n' % vocab_path)
+      vocab, rev_vocab = self.load_vocab(vocab_path)
+    else:
+      sys.stderr.write('Restoring word vocabulary to %s...\n' % vocab_path)
+      vocab, rev_vocab = self.create_vocab(source, vocab_size=vocab_size)
+      self.save_vocab(vocab_path, rev_vocab)
+    return vocab, rev_vocab
+
+  def create_vocab(self, source, vocab_size=0):
+    '''
+    Args:
+     - source: List of words.
+    '''
+    start_vocab = START_VOCAB 
+    rev_vocab, freq = zip(*collections.Counter(source).most_common())
+    rev_vocab = common.flatten([self.tokenizer(w) for w in rev_vocab])
+    if type(rev_vocab[0]) == list:
+      rev_vocab = common.flatten(rev_vocab)
+    rev_vocab = OrderedSet(start_vocab + rev_vocab)
+    if vocab_size:
+      rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size])
+    vocab = collections.OrderedDict()
+    for i,t in enumerate(rev_vocab):
+      vocab[t] = i
+    return vocab, rev_vocab
+    
+  def save_vocab(self, vocab_path, rev_vocab):
+    '''
+    Args:
+     - vocab_path: The path to which the vocabulary will be restored.
+     - rev_vocab: List of words.
+    '''
+    # Restore vocabulary.
+    with open(vocab_path, 'w') as f:
+      for k in rev_vocab:
+        if type(k) == unicode:
+          k = k.encode('utf-8')
+        f.write('%s\n' % (k))
+
+  def load_vocab(self, vocab_path):
+    rev_vocab = [l.replace('\n', '').split('\t')[0] for l in open(vocab_path)]
+    vocab = collections.OrderedDict()
+    for i,t in enumerate(rev_vocab):
+      vocab[t] = i
+    return vocab, rev_vocab

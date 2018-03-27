@@ -31,8 +31,8 @@ model_type=PointerNetwork          # The name of class defined in 'src/core/mode
 #dataset_type=NumNormalizedPriceDataset
 #dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
-dataset_type=AllNormalizedPriceDataset
-#dataset_type=PriceDatasetWithFeatures
+#dataset_type=AllNormalizedPriceDataset
+dataset_type=PriceDatasetWithFeatures
 
 dataset_path { # The train/valid/test dataset.
   test = dataset/test.price.csv

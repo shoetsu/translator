@@ -114,15 +114,10 @@ class _PriceDataset(DatasetBase):
     self.targets = [[self.vocab.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
     self.targets = list(zip(*self.targets)) # to batch-major.
 
-  def get_batch(self, batch_size,
-                input_max_len=None, output_max_len=None, shuffle=False):
-    if not self.sources:
-      self.load_data() # lazy loading.
-
-
+  def get_batch_data(self, input_max_len, output_max_len):
     sources, targets = self.symbolized
     if input_max_len:
-      paired = [(s,t) for s,t in zip(sources, targets) if not len(s) > input_max_len ]
+      paired = [(s,t) for s,t in zip(sources, targets) if not len(s) > input_max_len]
       sources, targets = list(zip(*paired))
 
     sources =  tf.keras.preprocessing.sequence.pad_sequences(sources, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
@@ -130,23 +125,35 @@ class _PriceDataset(DatasetBase):
     targets = [tf.keras.preprocessing.sequence.pad_sequences(targets_by_column, maxlen=output_max_len, padding='post', truncating='post', value=PAD_ID) for targets_by_column in targets]
     targets = list(zip(*targets)) # to idx-major. (for shuffling)
 
-    data = [tuple(x) for x in zip(sources, targets, self.original_sources)]
+    data = sources, targets, self.original_sources
+    return data
 
+  def yield_batch(self, batch_by_column):
+    b_sources, b_targets, b_ori_sources = batch_by_column
+    b_targets = list(zip(*b_targets)) # to column-major.
+    return common.dotDict({
+      'sources': np.array(b_sources),
+      # Include only the labels in 'target_columns' to batch.
+      'targets': [np.array(t) for t, col in zip(b_targets, self.all_columns) if col in self.target_columns],
+      'original_sources': b_ori_sources,
+    })
+
+  def get_batch(self, batch_size,
+                input_max_len=None, output_max_len=None, shuffle=False):
+    if not self.sources:
+      self.load_data() # lazy loading.
+
+    # get_batch_data() and yield_batch() can be overwritten in the child to feed extra inputs. 
+    data = self.get_batch_data(input_max_len=input_max_len,
+                               output_max_len=output_max_len)
+    data = list(zip(*data))
     if shuffle: # For training.
       random.shuffle(data)
     for i, b in itertools.groupby(enumerate(data), 
                                   lambda x: x[0] // (batch_size)):
-      batch = [x[1] for x in b]
-      b_sources, b_targets, b_ori_sources = zip(*batch)
-      b_targets = list(zip(*b_targets)) # to column-major.
-      yield common.dotDict({
-        'sources': np.array(b_sources),
-        # Include only the labels in 'target_columns' to batch.
-        'targets': [np.array(t) for t, col in zip(b_targets, self.all_columns) if col in self.target_columns],
-        'original_sources': b_ori_sources,
-        #'original_targets': b_ori_targets,
-      })
-  
+      b = [x[1] for x in b] # remove 'i'.
+      yield self.yield_batch(zip(*b))
+
   @property 
   def raw_data(self):
     return self.indices, self.original_sources, self.targets
@@ -447,7 +454,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 def unit_normalize(s, target_attribute):
   normalized_name = 'unit'
   if target_attribute.lower() == 'price':
-    unit_names = ['yen', 'dollar', 'euro', 'flanc', 'pound']
+    unit_names = ['yen', 'dollar', 'euro', 'franc', 'pound', 'cent', 'buck']
     unit_names += [x+'s' for x in unit_names]
     unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
   elif target_attribute.lower() == 'weight':
@@ -485,12 +492,39 @@ class _AllNormalizedPriceDataset(_NumNormalizedPriceDataset):
     return s
 
 
+class _PriceDatasetWithFeatures(_PriceDataset):
+  def __init__(self, data_path, vocab, pos_vocab, 
+               target_attribute, target_columns, 
+               num_lines=0):
+    self.pos_vocab = pos_vocab
+    _PriceDataset.__init__(self, data_path, vocab, target_attribute, 
+                           target_columns, num_lines=num_lines)
 
-# class _PriceDatasetWithFeatures(_PriceDataset):
-#   def __init__(self, path, vocab, target_columns, num_lines=0):
-#     _PriceDataset.__init__(self, path, vocab, target_columns, num_lines=num_lines)
-#     self.pos, _ = common.get_pos(self.original_sources, output_path=path)
-#     self.pos_vocab = None # given after initialization
+  def load_data(self):
+    super(_PriceDatasetWithFeatures, self).load_data()
+    self.pos = common.get_pos(self.original_sources, output_path=self.path)
+
+  def get_batch_data(self, input_max_len, output_max_len):
+    # TODO:
+    data = _PriceDataset.get_batch_data(self, input_max_len, output_max_len)
+    pos = [self.pos_vocab.tokens2ids(p) for p in self.pos]
+    pos = tf.keras.preprocessing.sequence.pad_sequences(pos, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
+    return data + tuple([pos])
+
+  def yield_batch(self, batch_by_column):
+    b_sources, b_targets, b_ori_sources, b_pos= batch_by_column
+    b_targets = list(zip(*b_targets)) # to column-major.
+    return common.dotDict({
+      'sources': np.array(b_sources),
+      # Include only the labels in 'target_columns' to batch.
+      'targets': [np.array(t) for t, col in zip(b_targets, self.all_columns) 
+                  if col in self.target_columns],
+      'original_sources': b_ori_sources,
+      'pos': b_pos,
+    })
+
+    
+
 
 
 
@@ -530,6 +564,24 @@ class CurrencyNormalizedPriceDataset(PackedDatasetBase):
 
 class AllNormalizedPriceDataset(PackedDatasetBase):
   pass
+
+
+class PriceDatasetWithFeatures(PackedDatasetBase):
+  @common.timewatch()
+  def __init__(self, dataset_type, pathes, num_train_data, vocab,
+               *args, **kwargs):
+    # Create POS Vocabulary from training data.
+    pos_vocab_path = pathes.train + '.pos.vocab'
+    if not os.path.exists(pos_vocab_path):
+      data = pd.read_csv(pathes.train).fillna(EMPTY)
+      text_data = data['sentence']
+      sources = [[_BOS] + vocab.tokenizer(l, normalize_digits=False) 
+                 for l in text_data]
+      pos_tokens = common.get_pos(sources, output_path=pathes.train)
+    else:
+      pos_tokens = []
+    pos_vocab = FeatureVocab(pos_vocab_path, pos_tokens)
+    PackedDatasetBase.__init__(self, dataset_type, pathes, num_train_data, vocab, pos_vocab, *args, **kwargs)
 
 # class PriceDatasetWithFeatures(PackedDatasetBase):
 #   dataset_type = _PriceDatasetWithFeatures

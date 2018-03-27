@@ -81,6 +81,7 @@ class Manager(object):
     if 'target_attribute' in args and args.target_attribute:
       config['target_attribute'] = args.target_attribute
 
+    # The restored confing in the checkpoint will be overwritten with the argument --cleanup=True.
     if args.cleanup or not os.path.exists(config_restored_path):
       sys.stderr.write('Restore the config to %s ...\n' % (config_restored_path))
 
