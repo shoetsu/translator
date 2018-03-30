@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from collections import OrderedDict, Counter
 from nltk.tokenize import sent_tokenize, word_tokenize
-from core.vocabularies import _BOS, BOS_ID, _PAD, PAD_ID, _NUM, FeatureVocab
+from core.vocabularies import _BOS, BOS_ID, _PAD, PAD_ID, _NUM, _UNIT, FeatureVocab
 from utils import evaluation, tf_utils, common
 import datasets as self_module
 
@@ -405,7 +405,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 
   def manual_replace(self, s, idx):
     # Replace the token on a certain index to 0. These indices are those of the tokens with 'CD' POS.
-    return [x if i not in idx else '0' for i, x in enumerate(s)]
+    return [x if i not in idx else _NUM for i, x in enumerate(s)]
 
   @property 
   def symbolized(self):
@@ -452,7 +452,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 
 # Dictionaries for manual replacement.
 def unit_normalize(s, target_attribute):
-  normalized_name = 'unit'
+  normalized_name = _UNIT
   if target_attribute.lower() == 'price':
     unit_names = ['yen', 'dollar', 'euro', 'franc', 'pound', 'cent', 'buck']
     unit_names += [x+'s' for x in unit_names]
@@ -523,10 +523,6 @@ class _PriceDatasetWithFeatures(_PriceDataset):
       'pos': b_pos,
     })
 
-    
-
-
-
 
 ###################################################
 #    Classes for dataset pair (train, valid, test)
@@ -564,7 +560,6 @@ class CurrencyNormalizedPriceDataset(PackedDatasetBase):
 
 class AllNormalizedPriceDataset(PackedDatasetBase):
   pass
-
 
 class PriceDatasetWithFeatures(PackedDatasetBase):
   @common.timewatch()

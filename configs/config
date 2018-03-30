@@ -3,11 +3,16 @@
 # Text processing.
 input_max_len = 30      # The maximum length of the input sentence in training.
 output_max_len = 5      # The maximum length of the output label.
-vocab_size = 100          # The maximum size of the vocabulary. if 0, use all.
+vocab_size = 10000          # The maximum size of the vocabulary. if 0, use all.
 lowercase=true          # Whether to convert words into lowercase or not.
 num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
 target_attribute=Price       # The targetted attribute. It is mainly used to decide the words to be normalizd.
 target_columns=[LB,UB,Unit,Rate] # The columns to be used. They all must be in the name of columns in the dataset.
+
+normalize_digits=false  # Whether to convert all the arabic numbers into 0. If you are going to employ NumNormalizedDataset or AllNormalizedDataset, it's not necessary.
+
+num_init_embedding_type=average_all # [word_0, average_selective, average_all, zero_vector]
+unit_init_embedding_type=average_all # [word_unit, average_selective, average_all, zero_vector]
 
 # Training hyperparameters.
 max_to_keep = 1         # The number of checkpoints kept.
@@ -23,16 +28,16 @@ share_decoder=false
 batch_size=10           # Batch size.
 
 # Structure.
-num_layers=1                       # The number of layers in MultiRNNCell.
-rnn_size=50                        # The dimension of RNN, and other layers.
-rnn_type=bidirectional_dynamic_rnn # The name of rnn function in tensorflow.
-cell_type=GRUCell                  # The name of RNNCell class in tensorflow.
-model_type=PointerNetwork          # The name of class defined in 'src/core/models/pointernet.py'.
+num_layers=1                          # The number of layers in MultiRNNCell.
+rnn_size=50                           # The dimension of RNN, and other layers.
+rnn_type=bidirectional_dynamic_rnn    # The name of rnn function in tensorflow.
+cell_type=GRUCell                     # The name of RNNCell class in tensorflow.
+model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
 #dataset_type=NumNormalizedPriceDataset
 #dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
-#dataset_type=AllNormalizedPriceDataset
-dataset_type=PriceDatasetWithFeatures
+dataset_type=AllNormalizedPriceDataset
+#dataset_type=PriceDatasetWithFeatures
 
 dataset_path { # The train/valid/test dataset.
   test = dataset/test.price.csv

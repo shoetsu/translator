@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from utils import common, evaluation, tf_utils
 from core import models, datasets
-from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD
+from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD, _NUM, _UNIT
 
 tf_config = tf.ConfigProto(
   log_device_placement=False, # If True, all the placement of variables will be logged. 
@@ -21,7 +21,8 @@ tf_config = tf.ConfigProto(
 #The default config for old models which don't have some recently added hyperparameters. (to be abolished in future)
 default_config = common.recDotDict({
   'share_decoder': False,
-  'target_columns': ['LB', 'UB', 'Unit', 'Rate']
+  'target_columns': ['LB', 'UB', 'Unit', 'Rate'],
+  'normalize_digits': False,
 })
 
 class Manager(object):
@@ -38,7 +39,12 @@ class Manager(object):
       self.vocab = WordVocabularyWithEmbedding(
         self.config.embeddings, 
         vocab_size=self.config.vocab_size, 
-        lowercase=self.config.lowercase) if vocab is None else vocab
+        lowercase=self.config.lowercase,
+        normalize_digits=self.config.normalize_digits,
+        num_init_embedding_type=self.config.num_init_embedding_type,
+        unit_init_embedding_type=self.config.unit_init_embedding_type
+      ) if vocab is None else vocab
+
       self.dataset = getattr(datasets, self.config.dataset_type)(
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
@@ -125,7 +131,8 @@ class Manager(object):
       train_batches = self.dataset.train.get_batch(
         self.config.batch_size, input_max_len=self.config.input_max_len, 
         output_max_len=self.config.output_max_len, shuffle=True)
-
+      sys.stderr.write('Epoch %d start training ...\n' % (epoch))
+    
       loss, epoch_time = model.train(train_batches)
       summary = tf_utils.make_summary({
         'loss': loss
@@ -149,6 +156,41 @@ class Manager(object):
     return
 
   def debug(self):
+    model = self.create_model(
+      self.sess, self.config, self.vocab,)
+      #checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
+    embeddings = self.sess.run(model.models[0].w_embeddings)
+    
+    num_vec = embeddings[self.vocab.token2id(_NUM)]
+    unit_vec = embeddings[self.vocab.token2id(_UNIT)]
+    num_vec2 = embeddings[self.vocab.token2id('_num')]
+    unit_vec2 = embeddings[self.vocab.token2id('_unit')]
+    def calc_similarity(vec):
+      res = []
+      for i, v in enumerate(embeddings):
+        sim = common.cosine_similarity(vec, v)
+        res.append((i, sim))
+      return sorted(res, key=lambda x: -x[1])
+
+    N=20
+    for v in [num_vec, unit_vec, num_vec2, unit_vec2]:
+      print [(self.vocab.id2token(_id), sim) for _id, sim in calc_similarity(v)][:N]
+    print len(embeddings)
+    print self.vocab.size
+    print self.vocab.rev_vocab[:20]
+    a = []
+    for w in self.vocab.rev_vocab[20:]:
+      e = embeddings[self.vocab.token2id(w)]
+      print '-------'
+      print w, np.linalg.norm(e)
+      if np.linalg.norm(e) < 1:
+        a.append(w)
+    print a
+    import math
+    e= np.random.uniform(-math.sqrt(3), math.sqrt(3), 
+                         size=300)
+    print np.linalg.norm(e)
+      #print e
     pass
 
   def demo(self, model=None, inp=None):

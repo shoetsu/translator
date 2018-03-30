@@ -1,5 +1,5 @@
 # coding:utf-8
-import math, sys, time
+import math, sys, time, copy
 import numpy as np
 from pprint import pprint
 
@@ -43,6 +43,7 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
       feed_prev=True)
   return d_outputs, predictions, copied_inputs
 
+
 class PointerNetwork(ModelBase):
   def __init__(self, sess, conf, vocab):
     ModelBase.__init__(self, sess, conf)
@@ -62,7 +63,7 @@ class PointerNetwork(ModelBase):
       batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
-      w_embeddings = self.initialize_embeddings(
+      self.w_embeddings = w_embeddings = self.initialize_embeddings(
         'Word', vocab.embeddings.shape, 
         initializer=tf.constant_initializer(vocab.embeddings),
         trainable=conf.train_embedding)
@@ -157,7 +158,7 @@ class PointerNetwork(ModelBase):
     for i, batch in enumerate(data):
       feed_dict = self.get_input_feed(batch, True)
       t = time.time()
-      step_loss, _ = self.sess.run([self.losses, self.updates], feed_dict)
+      step_loss, _ = self.sess.run([self.loss, self.updates], feed_dict)
       step_loss = np.mean(step_loss)
       epoch_time += time.time() - t
       loss += math.exp(step_loss)
@@ -178,3 +179,32 @@ class PointerNetwork(ModelBase):
     predictions = list(zip(*predictions))
     return predictions
 
+
+class IndependentPointerNetwork(PointerNetwork):
+  def __init__(self, sess, conf, vocab):
+    ModelBase.__init__(self, sess, conf)
+    self.models = models = []
+    target_columns = conf.target_columns
+    for col in target_columns:
+      with tf.variable_scope(col):
+        conf.target_columns = [col]
+        model = PointerNetwork(sess, conf, vocab)
+        self.models.append(model)
+    conf.target_columns = target_columns
+
+    self.e_inputs_ph = [m.e_inputs_ph for m in models]
+    self.d_outputs_ph = [m.d_outputs_ph[0] for m in models]
+    self.is_training = [m.is_training for m in models]
+    self.greedy_predictions = [m.greedy_predictions[0] for m in models]
+    self.loss = tf.reduce_mean([m.loss for m in models])
+    self.updates = self.get_updates(self.loss)
+
+  def get_input_feed(self, batch, is_training):
+    feed_dict = {}
+    for e_inputs_ph in self.e_inputs_ph:
+      feed_dict[e_inputs_ph] = batch.sources
+    for is_training_ph in self.is_training:
+      feed_dict[is_training_ph] = is_training
+    for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
+      feed_dict[d_outputs_ph] = target
+    return feed_dict

@@ -256,3 +256,16 @@ def get_config(filename):
 
 def print_config(config):
   print (pyhocon.HOCONConverter.convert(config, "hocon"))
+
+
+def cosine_similarity(v1, v2):
+  '''
+   v1, v2: a vector.
+  '''
+  return np.dot(v1, v2) / np.linalg.norm(v1) / np.linalg.norm(v2)
+
+class OrderedDefaultDict(collections.OrderedDict, collections.defaultdict):
+  def __init__(self, default_factory=None, *args, **kwargs):
+    #in python3 you can omit the args to super
+    super(OrderedDefaultDict, self).__init__(*args, **kwargs)
+    self.default_factory = default_factory
