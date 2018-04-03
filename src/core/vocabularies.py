@@ -138,6 +138,7 @@ class WordVocabularyBase(VocabularyBase):
 
 class PredefinedVocabWithEmbeddingBase(object):
   def init_vocab(self, emb_configs, vocab_size=0):
+    # Combine specified pre-trained embeddings.
     pretrained = [self.load_vocab(c['path'], skip_first=c['skip_first'], vocab_size=vocab_size) for c in emb_configs]
     rev_vocab = common.flatten([e.keys() for e in pretrained])
     rev_vocab = OrderedSet(self.start_vocab + list(rev_vocab))

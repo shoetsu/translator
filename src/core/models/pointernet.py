@@ -28,7 +28,7 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
   with tf.name_scope('add_bos'):
     d_inputs = tf.concat([tf.zeros([batch_size, 1], dtype=tf.int32), d_outputs_ph], axis=1)
   
-  # TODO: for some reason, setting feed_prev as False in training makes the performance worse...
+  # TODO: for some reason, setting teacher_forcing==True in training makes the performance worse...
   with tf.name_scope('train_decoder'):
     d_outputs, d_states, copied_inputs  = pointer_decoder(
       e_inputs_emb, d_inputs, e_state,
@@ -87,7 +87,7 @@ class PointerNetwork(ModelBase):
         wtype_embeddings = self.initialize_embeddings(
           'Wtype', [vocab.wtype.size, config.feature_size], 
           trainable=True)
-        e_inputs_emb.append(tf.nn.embedding_lookup(pos_embeddings, self.wtype_inputs_ph))
+        e_inputs_emb.append(tf.nn.embedding_lookup(wtype_embeddings, self.wtype_inputs_ph))
       e_inputs_emb = tf.concat(e_inputs_emb, axis=-1)
       e_inputs_emb = tf.nn.dropout(e_inputs_emb, self.keep_prob)
 

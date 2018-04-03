@@ -49,8 +49,8 @@ class Manager(object):
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
-      self.vocab.pos = self.dataset.train.vocab.pos 
-      self.vocab.wtype = self.dataset.train.vocab.wtype
+      #self.vocab.pos = self.dataset.train.vocab.pos 
+      #self.vocab.wtype = self.dataset.train.vocab.wtype
 
   def load_config(self, args):
     '''
@@ -190,9 +190,6 @@ class Manager(object):
     N=20
     for v in [num_vec, unit_vec, num_vec2, unit_vec2]:
       print [(self.vocab.word.id2token(_id), sim) for _id, sim in calc_similarity(v)][:N]
-    print len(embeddings)
-    print self.vocab.word.size
-    print self.vocab.word.rev_vocab[:20]
     a = []
     for w in self.vocab.word.rev_vocab[20:]:
       e = embeddings[self.vocab.word.token2id(w)]
@@ -336,7 +333,8 @@ def main(args):
   return manager
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
+  desc = ''
+  parser = argparse.ArgumentParser(desc)
   parser.add_argument("checkpoint_path")
   parser.add_argument("mode")
   parser.add_argument("config_path")
@@ -347,10 +345,14 @@ if __name__ == "__main__":
 
   # Arguments that can be dynamically overwritten if they're not None.
   parser.add_argument("--dataset_type", default=None, type=str)
-  parser.add_argument("--train_data_path", default=None, type=str)
-  parser.add_argument("--test_data_path", default=None, type=str)
-  parser.add_argument("--batch_size", default=None, type=int)
-  parser.add_argument("--vocab_size", default=None, type=int)
+  parser.add_argument("--train_data_path", default=None, type=str,
+                      help="The argument to overwrite config.dataset_path.train")
+  parser.add_argument("--test_data_path", default=None, type=str,
+                      help="The argument to overwrite config.dataset_path.test")
+  parser.add_argument("--batch_size", default=None, type=int,
+                      help="The argument to overwrite config.batch_size")
+  parser.add_argument("--vocab_size", default=None, type=int,
+                      help="The argument to overwrite config.vocab_size")
   parser.add_argument("--target_attribute", default=None, type=str)
   args  = parser.parse_args()
   main(args)

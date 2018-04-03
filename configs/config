@@ -33,15 +33,17 @@ model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/m
 #dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
 #dataset_type=AllNormalizedPriceDataset
-dataset_type=PriceDatasetWithFeatures
-features=[pos] # Additional features besides words. Acceptable feature types: [pos,wtype ]
+dataset_type=PriceDataset
+#dataset_type=PriceDatasetWithFeatures
+features=[] # Additional features besides words. Acceptable feature types: [pos,wtype ]
 feature_size=20
 normalize_digits=true  # Whether to convert all the arabic numbers into 0. If you are going to employ NumNormalizedDataset or AllNormalizedDataset, it's not necessary.
 
 dataset_path { # The train/valid/test dataset.
   test = dataset/test.price.csv
   valid = dataset/valid.price.csv
-  train = dataset/train.price.csv
+  #train = dataset/train.price.csv
+  train = dataset/train.price.balanced.csv
 
 }
 #Pretrained embeddings.
