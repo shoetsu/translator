@@ -18,11 +18,11 @@ _UNIT = "_UNIT"
 ERROR_ID = -1
 PAD_ID = 0
 BOS_ID = 1
-EOS_ID = 2
+EOS_ID = 2 # Unused token, just for future use.
 UNK_ID = 3
 
 _DIGIT_RE = re.compile(r"\d")
-START_VOCAB = [_PAD, _BOS, _EOS, _UNK, _NUM, _UNIT]
+START_VOCAB = [_PAD, _BOS, _EOS, _UNK, _NUM, _UNIT] # All vocabularies have these special tokens.
 UNDISPLAYED_TOKENS = [_PAD, _BOS, _EOS]
 
 def separate_numbers(sent):
@@ -71,41 +71,14 @@ class WordTokenizer(object):
     return word_tokenize(sent)
 
 class VocabularyBase(object):
-  def __init__(self, add_bos=False, add_eos=False):
+  def __init__(self):
     self.vocab = None
     self.rev_vocab = None
     self.name = None
-    # self.start_offset = [BOS_ID] if add_bos else []
-    # self.end_offset = [EOS_ID] if add_eos else []
-    # self.n_start_offset = len(self.start_offset)
-    # self.n_end_offset = len(self.end_offset)
 
   @property
   def size(self):
     return len(self.vocab)
-
-  # def create_vocab(self, token_list, vocab_path):
-  #   # Create vocab from a list of words.
-  #   start_vocab = START_VOCAB
-  #   rev_vocab = OrderedSet(start_vocab + token_list) 
-  #   with open(vocab_path, 'w') as f:
-  #     f.write('\n'.join(list(rev_vocab) + '\n'))
-  #   return rev_vocab
-
-  # def init_vocab(self, token_list, vocab_path, skip_first=False):
-  #   rev_vocab = self.load_vocab(vocab_path, skip_first=skip_first)
-  #   if rev_vocab is None:
-  #     rev_vocab = self.create_vocab()
-
-  #   vocab = collections.OrderedDict()
-  #   for i,t in enumerate(rev_vocab):
-  #     vocab[t] = i
-  #   return vocab, rev_vocab
-
-
-  # def load_vocab(vocab_path, skip_first=False):
-  #   pass
-  #   #with open(vocab_path)
 
 
 class WordVocabularyBase(VocabularyBase):
@@ -144,7 +117,7 @@ class WordVocabularyBase(VocabularyBase):
     # token: a string.
     # res: an interger.
 
-    return self.vocab.get(token, UNK_ID)
+    return self.vocab.get(token, self.vocab.get(_UNK))
 
   def str2ids(self, sentence):
     # sentence : a string.
@@ -165,15 +138,10 @@ class WordVocabularyBase(VocabularyBase):
 
 class PredefinedVocabWithEmbeddingBase(object):
   def init_vocab(self, emb_configs, vocab_size=0):
-    
-    pretrained = [self.load_vocab(c['path'], c['format'] == 'vec', vocab_size=vocab_size) for c in emb_configs]
+    pretrained = [self.load_vocab(c['path'], skip_first=c['skip_first'], vocab_size=vocab_size) for c in emb_configs]
     rev_vocab = common.flatten([e.keys() for e in pretrained])
-    # Todo: ここでtokenizer掛けない
-    start_vocab = START_VOCAB
-    rev_vocab = OrderedSet(start_vocab + [self.tokenizer(w, flatten=True)[0] 
-                                          for w in rev_vocab])
-    #rev_vocab = OrderedSet(start_vocab + [self.tokenizer(w, flatten=True)[0] 
-    #                                      for w in rev_vocab])
+    rev_vocab = OrderedSet(self.start_vocab + list(rev_vocab))
+
     if vocab_size:
       rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size])
     vocab = collections.OrderedDict()
@@ -191,15 +159,13 @@ class PredefinedVocabWithEmbeddingBase(object):
     '''
     sys.stderr.write("Loading word embeddings from {}...\n".format(embedding_path))
     embedding_dict = None
-    if vocab_size and skip_first:
-      vocab_size += 1
 
     word_and_emb = []
     with open(embedding_path) as f:
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
-        if vocab_size and i > vocab_size:
+        if vocab_size and len(word_and_emb) > vocab_size:
           break
         #################
         word_and_embedding = line.split()
@@ -211,88 +177,81 @@ class PredefinedVocabWithEmbeddingBase(object):
         embedding = [float(s) for s in word_and_embedding[1:]]
         word_and_emb.append((word, embedding))
     embedding_size = len(word_and_emb[0][1])
-    zero_vector = [0.0 for _ in xrange(embedding_size)]
-    all_average_vector = np.mean([v for _, v in word_and_emb], axis=0)
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
-                                        
-    for k in START_VOCAB:
-      embedding_dict[k] = default_embedding
+    for k in self.start_vocab:
+      embedding_dict[k] = embedding_dict[k]
+
     for k, v in word_and_emb:
       embedding_dict[k] = v
-    ############ TEMPORARY ####################
-    num_init_embedding_type = self.num_init_embedding_type
-    unit_init_embedding_type = self.unit_init_embedding_type
-    if num_init_embedding_type == 'word_0':
-      embedding_dict[_NUM] = embedding_dict['0']
-    elif num_init_embedding_type == 'average_all':
-      pass
-    elif unit_init_embedding_type == 'random':
-      embedding_dict[_NUM] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
-                                               size=embedding_size)
-    elif num_init_embedding_type == 'average_selective':
-      average_vec = []
-      for word in embedding_dict:
-        if re.match('^[0-9]+$', word):
-          average_vec.append(embedding_dict[word])
-      average_vec = np.mean(average_vec, axis=0)
-      embedding_dict[_NUM] = average_vec
-    elif num_init_embedding_type == 'zero_vector':
-      embedding_dict[_NUM] = zero_vector
-    else:
-      raise ValueError
 
-    if unit_init_embedding_type == 'word_unit':
-      embedding_dict[_UNIT] = embedding_dict['unit']
-    elif unit_init_embedding_type == 'word_0':
-      embedding_dict[_UNIT] = embedding_dict['0']
-    elif unit_init_embedding_type == 'average_all':
-      pass
-    elif unit_init_embedding_type == 'random':
-      embedding_dict[_UNIT] = np.random.uniform(-math.sqrt(3), math.sqrt(3), 
-                                                size=embedding_size)
-    elif unit_init_embedding_type == 'average_selective':
-      unit_names = ['yen', 'dollar', 'euro', 'franc', 'pound', 'cent', 'buck']
-      unit_names += [x+'s' for x in unit_names]
-      unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
-      unit_tokens = unit_names + unit_symbols
-      average_vec = np.mean([embedding_dict[t] for t in unit_tokens 
-                             if t in embedding_dict], axis=0)
-      embedding_dict[_UNIT] = average_vec
-    elif unit_init_embedding_type == 'zero_vector':
-      embedding_dict[_UNIT] = zero_vector
-    else:
-      raise ValueError
+    # ############ TEMPORARY ####################
+    # zero_vector = [0.0 for _ in xrange(embedding_size)]
+    # all_average_vector = np.mean([v for _, v in word_and_emb], axis=0)
+    # num_init_embedding_type = self.num_init_embedding_type
+    # unit_init_embedding_type = self.unit_init_embedding_type
+    # if num_init_embedding_type == 'word_0':
+    #   embedding_dict[_NUM] = embedding_dict['0']
+    # elif num_init_embedding_type == 'average_all':
+    #   embedding_dict[_NUM] = all_average_vector
+    # elif unit_init_embedding_type == 'random':
+    #   embedding_dict[_NUM] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
+    #                                            size=embedding_size)
+    # elif num_init_embedding_type == 'average_selective':
+    #   average_vec = []
+    #   for word in embedding_dict:
+    #     if re.match('^[0-9]+$', word):
+    #       average_vec.append(embedding_dict[word])
+    #   average_vec = np.mean(average_vec, axis=0)
+    #   embedding_dict[_NUM] = average_vec
+    # elif num_init_embedding_type == 'zero_vector':
+    #   embedding_dict[_NUM] = zero_vector
+    # else:
+    #   raise ValueError
+
+    # if unit_init_embedding_type == 'word_unit':
+    #   embedding_dict[_UNIT] = embedding_dict['unit']
+    # elif unit_init_embedding_type == 'word_0':
+    #   embedding_dict[_UNIT] = embedding_dict['0']
+    # elif unit_init_embedding_type == 'average_all':
+    #   embedding_dict[_UNIT] = all_average_vector
+    # elif unit_init_embedding_type == 'random':
+    #   embedding_dict[_UNIT] = np.random.uniform(-math.sqrt(3), math.sqrt(3), 
+    #                                             size=embedding_size)
+    # elif unit_init_embedding_type == 'average_selective':
+    #   unit_names = ['yen', 'dollar', 'euro', 'franc', 'pound', 'cent', 'buck']
+    #   unit_names += [x+'s' for x in unit_names]
+    #   unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
+    #   unit_tokens = unit_names + unit_symbols
+    #   average_vec = np.mean([embedding_dict[t] for t in unit_tokens 
+    #                          if t in embedding_dict], axis=0)
+    #   embedding_dict[_UNIT] = average_vec
+    # elif unit_init_embedding_type == 'zero_vector':
+    #   embedding_dict[_UNIT] = zero_vector
+    # else:
+    #   raise ValueError
     sys.stderr.write("Done loading word embeddings.\n")
-    # print embedding_dict["0"]
-    # print embedding_dict["unit"]
-    # print embedding_dict[_UNIT]
-    # print zero_vector
-    # print self.num_init_embedding_type
-    # print self.unit_init_embedding_type
-    # exit(1)
     return embedding_dict
 
 
 class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddingBase):
-  def __init__(self, emb_configs,
+  def __init__(self, emb_configs, start_vocab=START_VOCAB,
                vocab_size=0, lowercase=False, normalize_digits=True, 
-               normalize_embedding=False, 
-               num_init_embedding_type=None, unit_init_embedding_type=None):
+               normalize_embedding=False):
+    self.start_vocab = start_vocab
     self.tokenizer = WordTokenizer(lowercase=lowercase,
                                    normalize_digits=normalize_digits)
     self.normalize_embedding = normalize_embedding
-    self.num_init_embedding_type = num_init_embedding_type
-    self.unit_init_embedding_type = unit_init_embedding_type
     self.vocab, self.rev_vocab, self.embeddings = self.init_vocab(
       emb_configs, vocab_size)
 
-  @property
-  def lookup_table(self):
-    return tf.contrib.lookup.HashTable(
-      tf.contrib.lookup.KeyValueTensorInitializer(self.vocab.keys(), 
-                                                  self.vocab.values()), UNK_ID)
+  # @property
+  # def lookup_table(self):
+  #   return tf.contrib.lookup.HashTable(
+  #     tf.contrib.lookup.KeyValueTensorInitializer(
+  #       self.vocab.keys(), self.vocab.values()), self.vocab.get(_UNK))
+
   # def add2vocab(self, token, new_embedding=None):
   #   if token not in self.rev_vocab:
   #     self.vocab[token] = len(self.vocab)
@@ -305,20 +264,22 @@ class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddi
 
 
 class FeatureVocab(WordVocabularyBase):
-  def __init__(self, vocab_path, source):
+  def __init__(self, vocab_path, source, start_vocab=START_VOCAB):
+    self.start_vocab = start_vocab
     if source and type(source[0]) not in [str, unicode]:
       source = common.flatten(source)
     self.tokenizer = lambda x: [x]
     self.vocab, self.rev_vocab = self.init_vocab(vocab_path, source)
 
   def init_vocab(self, vocab_path, source, vocab_size=0):
-    if os.path.exists(vocab_path):
+    if vocab_path and os.path.exists(vocab_path):
       sys.stderr.write('Loading word vocabulary from %s...\n' % vocab_path)
       vocab, rev_vocab = self.load_vocab(vocab_path)
     else:
-      sys.stderr.write('Restoring word vocabulary to %s...\n' % vocab_path)
       vocab, rev_vocab = self.create_vocab(source, vocab_size=vocab_size)
-      self.save_vocab(vocab_path, rev_vocab)
+      if vocab_path:
+        sys.stderr.write('Restoring word vocabulary to %s...\n' % vocab_path)
+        self.save_vocab(vocab_path, rev_vocab)
     return vocab, rev_vocab
 
   def create_vocab(self, source, vocab_size=0):
@@ -326,12 +287,11 @@ class FeatureVocab(WordVocabularyBase):
     Args:
      - source: List of words.
     '''
-    start_vocab = START_VOCAB 
-    rev_vocab, freq = zip(*collections.Counter(source).most_common())
+    rev_vocab, freq = zip(*collections.Counter(source).most_common()) if source else ([], None)
     rev_vocab = common.flatten([self.tokenizer(w) for w in rev_vocab])
-    if type(rev_vocab[0]) == list:
+    if rev_vocab and type(rev_vocab[0]) == list:
       rev_vocab = common.flatten(rev_vocab)
-    rev_vocab = OrderedSet(start_vocab + rev_vocab)
+    rev_vocab = OrderedSet(self.start_vocab + list(rev_vocab))
     if vocab_size:
       rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size])
     vocab = collections.OrderedDict()
@@ -346,11 +306,17 @@ class FeatureVocab(WordVocabularyBase):
      - rev_vocab: List of words.
     '''
     # Restore vocabulary.
+    if not vocab_path:
+      return
     with open(vocab_path, 'w') as f:
       for k in rev_vocab:
         if type(k) == unicode:
           k = k.encode('utf-8')
-        f.write('%s\n' % (k))
+        try:
+          f.write('%s\n' % (k))
+        except:
+          print k
+          exit(1)
 
   def load_vocab(self, vocab_path):
     rev_vocab = [l.replace('\n', '').split('\t')[0] for l in open(vocab_path)]

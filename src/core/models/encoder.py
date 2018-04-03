@@ -16,27 +16,27 @@ def merge_state(state):
     state = tf.concat(state, 1)
   return state
 
-class WordEncoder(object):
-  def __init__(self, config, w_embeddings, keep_prob,
-               activation=tf.nn.tanh, shared_scope=None):
-    self.w_embeddings = w_embeddings
-    self.keep_prob = keep_prob
-    self.shared_scope = shared_scope
+# class WordEncoder(object):
+#   def __init__(self, config, w_embeddings, keep_prob,
+#                activation=tf.nn.tanh, shared_scope=None):
+#     self.w_embeddings = w_embeddings
+#     self.keep_prob = keep_prob
+#     self.shared_scope = shared_scope
 
-  def __call__(self, *args, **kwargs):
-    return self.encode(*args, **kwargs)
+#   def __call__(self, *args, **kwargs):
+#     return self.encode(*args, **kwargs)
 
-  def encode(self, wc_inputs):
-    outputs = []
-    with tf.variable_scope(self.shared_scope or "WordEncoder"):
-      for inputs in wc_inputs:
-        if len(inputs.get_shape()) == 3: # char-based
-          raise NotImplementedError()
-        elif len(inputs.get_shape()) == 2: # word-based
-          word_repls = tf.nn.embedding_lookup(self.w_embeddings, inputs)
-          outputs.append(word_repls)
-        outputs = tf.concat(outputs, axis=-1)
-    return tf.nn.dropout(outputs, self.keep_prob) 
+#   def encode(self, wc_inputs):
+#     outputs = []
+#     with tf.variable_scope(self.shared_scope or "WordEncoder"):
+#       for inputs in wc_inputs:
+#         if len(inputs.get_shape()) == 3: # char-based
+#           raise NotImplementedError()
+#         elif len(inputs.get_shape()) == 2: # word-based
+#           word_repls = tf.nn.embedding_lookup(self.w_embeddings, inputs)
+#           outputs.append(word_repls)
+#         outputs = tf.concat(outputs, axis=-1)
+#     return tf.nn.dropout(outputs, self.keep_prob) 
 
 class SentenceEncoder(object):
   def __init__(self, config, keep_prob,

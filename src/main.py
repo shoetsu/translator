@@ -23,6 +23,7 @@ default_config = common.recDotDict({
   'share_decoder': False,
   'target_columns': ['LB', 'UB', 'Unit', 'Rate'],
   'normalize_digits': False,
+  'features': [],
 })
 
 class Manager(object):
@@ -36,19 +37,20 @@ class Manager(object):
     sys.stderr.write(str(self.config) + '\n')
 
     if True or not args.interactive:
-      self.vocab = WordVocabularyWithEmbedding(
+      self.vocab = common.dotDict()
+      self.vocab.word = WordVocabularyWithEmbedding(
         self.config.embeddings, 
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase,
         normalize_digits=self.config.normalize_digits,
-        num_init_embedding_type=self.config.num_init_embedding_type,
-        unit_init_embedding_type=self.config.unit_init_embedding_type
       ) if vocab is None else vocab
 
       self.dataset = getattr(datasets, self.config.dataset_type)(
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
+      self.vocab.pos = self.dataset.train.vocab.pos 
+      self.vocab.wtype = self.dataset.train.vocab.wtype
 
   def load_config(self, args):
     '''
@@ -156,15 +158,28 @@ class Manager(object):
     return
 
   def debug(self):
+    dataset = self.dataset.test
+    batches = self.dataset.train.get_batch(
+      self.config.batch_size, input_max_len=self.config.input_max_len, 
+      output_max_len=self.config.output_max_len, shuffle=False)
+    for b in batches:
+      for k, v in b.items():
+        print k
+        print v
+        if k == 'pos':
+          print [dataset.pos_vocab.ids2tokens(_ids) for _ids in v]
+      exit(1)
+    
+    return
     model = self.create_model(
-      self.sess, self.config, self.vocab,)
+      self.sess, self.config, self.vocab)
       #checkpoint_path=self.checkpoints_path + '/model.ckpt.best')
     embeddings = self.sess.run(model.models[0].w_embeddings)
     
-    num_vec = embeddings[self.vocab.token2id(_NUM)]
-    unit_vec = embeddings[self.vocab.token2id(_UNIT)]
-    num_vec2 = embeddings[self.vocab.token2id('_num')]
-    unit_vec2 = embeddings[self.vocab.token2id('_unit')]
+    num_vec = embeddings[self.vocab.word.token2id(_NUM)]
+    unit_vec = embeddings[self.vocab.word.token2id(_UNIT)]
+    num_vec2 = embeddings[self.vocab.word.token2id('_num')]
+    unit_vec2 = embeddings[self.vocab.word.token2id('_unit')]
     def calc_similarity(vec):
       res = []
       for i, v in enumerate(embeddings):
@@ -174,13 +189,13 @@ class Manager(object):
 
     N=20
     for v in [num_vec, unit_vec, num_vec2, unit_vec2]:
-      print [(self.vocab.id2token(_id), sim) for _id, sim in calc_similarity(v)][:N]
+      print [(self.vocab.word.id2token(_id), sim) for _id, sim in calc_similarity(v)][:N]
     print len(embeddings)
-    print self.vocab.size
-    print self.vocab.rev_vocab[:20]
+    print self.vocab.word.size
+    print self.vocab.word.rev_vocab[:20]
     a = []
-    for w in self.vocab.rev_vocab[20:]:
-      e = embeddings[self.vocab.token2id(w)]
+    for w in self.vocab.word.rev_vocab[20:]:
+      e = embeddings[self.vocab.word.token2id(w)]
       print '-------'
       print w, np.linalg.norm(e)
       if np.linalg.norm(e) < 1:

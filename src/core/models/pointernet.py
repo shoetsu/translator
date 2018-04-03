@@ -6,7 +6,7 @@ from pprint import pprint
 import tensorflow as tf
 from utils.tf_utils import shape
 from core.models import ModelBase, setup_cell
-from core.models.encoder import WordEncoder, SentenceEncoder
+from core.models.encoder import SentenceEncoder #WordEncoder, 
 from core.extensions.pointer import pointer_decoder 
 from core.vocabularies import BOS_ID
 
@@ -45,36 +45,54 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
 
 
 class PointerNetwork(ModelBase):
-  def __init__(self, sess, conf, vocab):
-    ModelBase.__init__(self, sess, conf)
+  def __init__(self, sess, config, vocab):
+    ModelBase.__init__(self, sess, config)
     self.vocab = vocab
-    input_max_len, output_max_len = None, conf.output_max_len
+    self.use_pos = 'pos' in config.features
+    self.use_wtype = 'wtype' in config.features
+
+    input_max_len, output_max_len = None, config.output_max_len
     self.is_training = tf.placeholder(tf.bool, [], name='is_training')
     with tf.name_scope('keep_prob'):
-      self.keep_prob = 1.0 - tf.to_float(self.is_training) * conf.dropout_rate
+      self.keep_prob = 1.0 - tf.to_float(self.is_training) * config.dropout_rate
 
     # <Sample input>
     # e_inputs: [1, 40, 44, 0, 0], d_outputs: [2, 0, 0] (target=44)
     with tf.name_scope('EncoderInput'):
       self.e_inputs_ph = tf.placeholder(
         tf.int32, [None, input_max_len], name="EncoderInput")
+      self.pos_inputs_ph = tf.placeholder(
+        tf.int32, [None, input_max_len], name="EncoderInputPOS")
+      self.wtype_inputs_ph = tf.placeholder(
+        tf.int32, [None, input_max_len], name="EncoderInputWordType")
 
     with tf.name_scope('batch_size'):
       batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
-      self.w_embeddings = w_embeddings = self.initialize_embeddings(
-        'Word', vocab.embeddings.shape, 
-        initializer=tf.constant_initializer(vocab.embeddings),
-        trainable=conf.train_embedding)
+      e_inputs_emb = []
 
-    with tf.variable_scope('WordEncoder') as scope:
-      word_encoder = WordEncoder(conf, w_embeddings, self.keep_prob,
-                                      shared_scope=scope)
-      e_inputs_emb = word_encoder.encode([self.e_inputs_ph])
+      w_embeddings = self.initialize_embeddings(
+        'Word', vocab.word.embeddings.shape, 
+        initializer=tf.constant_initializer(vocab.word.embeddings),
+        trainable=config.train_embedding)
+      e_inputs_emb.append(tf.nn.embedding_lookup(w_embeddings, self.e_inputs_ph))
+      
+      if self.use_pos:
+        pos_embeddings = self.initialize_embeddings(
+          'POS', [vocab.pos.size, config.feature_size], 
+          trainable=True)
+        e_inputs_emb.append(tf.nn.embedding_lookup(pos_embeddings, self.pos_inputs_ph))
+      if 'wtype' in config.features:
+        wtype_embeddings = self.initialize_embeddings(
+          'Wtype', [vocab.wtype.size, config.feature_size], 
+          trainable=True)
+        e_inputs_emb.append(tf.nn.embedding_lookup(pos_embeddings, self.wtype_inputs_ph))
+      e_inputs_emb = tf.concat(e_inputs_emb, axis=-1)
+      e_inputs_emb = tf.nn.dropout(e_inputs_emb, self.keep_prob)
 
     with tf.variable_scope('SentEncoder') as scope:
-      sent_encoder = SentenceEncoder(conf, self.keep_prob, 
+      sent_encoder = SentenceEncoder(config, self.keep_prob, 
                                           shared_scope=scope)
       e_inputs_length = tf.count_nonzero(self.e_inputs_ph, axis=1)
       e_outputs, e_state = sent_encoder.encode(
@@ -85,16 +103,16 @@ class PointerNetwork(ModelBase):
     self.losses = []
     self.greedy_predictions = []
     self.copied_inputs = []
-    for i, col_name in enumerate(conf.target_columns):
+    for i, col_name in enumerate(config.target_columns):
       with tf.name_scope('DecoderOutput%d' % i):
         d_outputs_ph = tf.placeholder(
           tf.int32, [None, output_max_len], name="DecoderOutput")
 
-      ds_name = 'Decoder' if conf.share_decoder else 'Decoder%d' % i 
+      ds_name = 'Decoder' if config.share_decoder else 'Decoder%d' % i 
       with tf.variable_scope(ds_name) as scope:
-        d_cell = setup_cell(conf.cell_type, conf.rnn_size, conf.num_layers,
+        d_cell = setup_cell(config.cell_type, config.rnn_size, config.num_layers,
                             keep_prob=self.keep_prob)
-        teacher_forcing = conf.teacher_forcing if 'teacher_forcing' in conf else False
+        teacher_forcing = config.teacher_forcing if 'teacher_forcing' in config else False
         d_outputs, predictions, copied_inputs = setup_decoder(
           d_outputs_ph, e_inputs_emb, e_state, attention_states, d_cell, 
           batch_size, output_max_len, scope=scope, 
@@ -124,6 +142,8 @@ class PointerNetwork(ModelBase):
       self.e_inputs_ph: batch.sources,
       self.is_training: is_training
     }
+    if self.use_pos:
+      feed_dict[self.pos_inputs_ph] = batch.pos
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
     # sys.stdout = sys.stderr
@@ -181,18 +201,24 @@ class PointerNetwork(ModelBase):
 
 
 class IndependentPointerNetwork(PointerNetwork):
-  def __init__(self, sess, conf, vocab):
-    ModelBase.__init__(self, sess, conf)
+  def __init__(self, sess, config, vocab):
+    ModelBase.__init__(self, sess, config)
     self.models = models = []
-    target_columns = conf.target_columns
+    self.vocab = vocab
+    self.use_pos = 'pos' in config.features
+    self.use_wtype = 'wtype' in config.features
+
+    target_columns = config.target_columns
     for col in target_columns:
       with tf.variable_scope(col):
-        conf.target_columns = [col]
-        model = PointerNetwork(sess, conf, vocab)
+        config.target_columns = [col]
+        model = PointerNetwork(sess, config, vocab)
         self.models.append(model)
-    conf.target_columns = target_columns
+    config.target_columns = target_columns
 
     self.e_inputs_ph = [m.e_inputs_ph for m in models]
+    self.pos_inputs_ph = [m.pos_inputs_ph for m in models]
+    self.wtype_inputs_ph = [m.wtype_inputs_ph for m in models]
     self.d_outputs_ph = [m.d_outputs_ph[0] for m in models]
     self.is_training = [m.is_training for m in models]
     self.greedy_predictions = [m.greedy_predictions[0] for m in models]
@@ -201,10 +227,18 @@ class IndependentPointerNetwork(PointerNetwork):
 
   def get_input_feed(self, batch, is_training):
     feed_dict = {}
-    for e_inputs_ph in self.e_inputs_ph:
-      feed_dict[e_inputs_ph] = batch.sources
-    for is_training_ph in self.is_training:
-      feed_dict[is_training_ph] = is_training
+    for k in self.e_inputs_ph:
+      feed_dict[k] = batch.sources
+    for k in self.is_training:
+      feed_dict[k] = is_training
+
+    if self.use_pos:
+      for k in self.pos_inputs_ph:
+        feed_dict[k] = batch.pos
+    if self.use_wtype:
+      for k in self.wtype_inputs_ph:
+        feed_dict[k] = batch.wtype
+
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
     return feed_dict

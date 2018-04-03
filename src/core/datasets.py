@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from collections import OrderedDict, Counter
 from nltk.tokenize import sent_tokenize, word_tokenize
-from core.vocabularies import _BOS, BOS_ID, _PAD, PAD_ID, _NUM, _UNIT, FeatureVocab
+from core.vocabularies import _PAD, PAD_ID, _BOS, BOS_ID, _EOS, _UNK, _NUM, _UNIT, FeatureVocab
 from utils import evaluation, tf_utils, common
 import datasets as self_module
 
@@ -91,6 +91,11 @@ class _PriceDataset(DatasetBase):
     self.targets = []
     self.all_columns = []
 
+  def get_pos(self, texts, path=None):
+    pos = common.get_pos(texts, output_path=path)
+    pos = [[_BOS] + p[1:] for p in pos] # The POS of _BOS should be _BOS.
+    return pos
+
   def load_data(self):
     # lazy loading to save time.
     sys.stderr.write('Loading dataset from %s ...\n' % (self.path))
@@ -101,9 +106,9 @@ class _PriceDataset(DatasetBase):
   
     text_data = data['sentence']
     # For copying, keep unnormalized sentences too.
-    self.original_sources = [[_BOS] + self.vocab.tokenizer(l, normalize_digits=False) for l in text_data]
+    self.original_sources = [[_BOS] + self.vocab.word.tokenizer(l, normalize_digits=False) for l in text_data]
     self.indices = data['index'].values
-    self.sources = [[_BOS] + self.vocab.tokenizer(l) for l in text_data]
+    self.sources = [[_BOS] + self.vocab.word.tokenizer(l) for l in text_data]
 
     self.all_columns = [x for x in data.columns if x not in ['index', 'sentence']]
     if not self.target_columns:
@@ -111,10 +116,12 @@ class _PriceDataset(DatasetBase):
     for c in self.target_columns:
       if not c in self.all_columns:
         raise ValueError('The name of column must be in the label columns of data. (\'%s\' not found in %s)' % (c, str(self.all_columns)))
-    self.targets = [[self.vocab.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
+    self.targets = [[self.vocab.word.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
     self.targets = list(zip(*self.targets)) # to batch-major.
 
   def get_batch_data(self, input_max_len, output_max_len):
+    '''
+    '''
     sources, targets = self.symbolized
     if input_max_len:
       paired = [(s,t) for s,t in zip(sources, targets) if not len(s) > input_max_len]
@@ -128,9 +135,16 @@ class _PriceDataset(DatasetBase):
     data = sources, targets, self.original_sources
     return data
 
-  def yield_batch(self, batch_by_column):
-    b_sources, b_targets, b_ori_sources = batch_by_column
+  def yield_batch(self, batch):
+    '''
+    Args
+      - batch: A list of a list containing 'batch_size' examples (specified as an argument to get_batch()), batch[i] contains each of the return values of get_batch_data().   (i.e. the shape of 'batch' = [len(self.get_batch_data(...)), batch_size]).
+
+    Return : A batch as a dictionary.
+    '''
+    b_sources, b_targets, b_ori_sources = batch
     b_targets = list(zip(*b_targets)) # to column-major.
+
     return common.dotDict({
       'sources': np.array(b_sources),
       # Include only the labels in 'target_columns' to batch.
@@ -166,7 +180,7 @@ class _PriceDataset(DatasetBase):
   def symbolized(self):
     # Find the indice of the tokens in a source sentence which was copied as a target label.
     targets = [[[o.index(x) for x in tt if x != EMPTY and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
-    sources = [self.vocab.tokens2ids(self.manual_replace(s)) for s in self.sources]
+    sources = [self.vocab.word.tokens2ids(self.manual_replace(s)) for s in self.sources]
     return sources, targets
 
   # @property
@@ -211,7 +225,7 @@ class _PriceDataset(DatasetBase):
     # Normalized texts with _UNK.
     if self.vocab:
       test_inputs_tokens, _ = self.symbolized
-      token_inputs = [self.vocab.ids2tokens(x) for x in test_inputs_tokens]
+      token_inputs = [self.vocab.word.ids2tokens(x) for x in test_inputs_tokens]
     else:
       token_inputs = [[] for _ in range(len(original_sources))]
 
@@ -397,7 +411,6 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 
   def load_data(self):
     _PriceDataset.load_data(self)
-    self.pos = common.get_pos(self.original_sources, output_path=self.path)
     self.original_sources, self.targets, self.num_indices = self.concat_numbers(
       self.original_sources, self.targets, self.pos 
     )
@@ -410,7 +423,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
   @property 
   def symbolized(self):
     targets = [[[o.index(x) for x in tt if x != EMPTY and x in o ] for tt in t] for o, t in zip(self.original_sources, self.targets)]
-    sources = [self.vocab.tokens2ids(self.manual_replace(s, idx)) for s, idx in zip(self.sources, self.num_indices)]
+    sources = [self.vocab.word.tokens2ids(self.manual_replace(s, idx)) for s, idx in zip(self.sources, self.num_indices)]
     return sources, targets
 
   def concat_numbers(self, _sources, _targets, _pos):
@@ -493,21 +506,19 @@ class _AllNormalizedPriceDataset(_NumNormalizedPriceDataset):
 
 
 class _PriceDatasetWithFeatures(_PriceDataset):
-  def __init__(self, data_path, vocab, pos_vocab, 
+  def __init__(self, data_path, vocab, 
                target_attribute, target_columns, 
                num_lines=0):
-    self.pos_vocab = pos_vocab
     _PriceDataset.__init__(self, data_path, vocab, target_attribute, 
                            target_columns, num_lines=num_lines)
-
   def load_data(self):
     super(_PriceDatasetWithFeatures, self).load_data()
-    self.pos = common.get_pos(self.original_sources, output_path=self.path)
+    self.pos = self.get_pos(self.original_sources, self.path)
 
   def get_batch_data(self, input_max_len, output_max_len):
     # TODO:
     data = _PriceDataset.get_batch_data(self, input_max_len, output_max_len)
-    pos = [self.pos_vocab.tokens2ids(p) for p in self.pos]
+    pos = [self.vocab.pos.tokens2ids(p) for p in self.pos]
     pos = tf.keras.preprocessing.sequence.pad_sequences(pos, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
     return data + tuple([pos])
 
@@ -570,28 +581,12 @@ class PriceDatasetWithFeatures(PackedDatasetBase):
     if not os.path.exists(pos_vocab_path):
       data = pd.read_csv(pathes.train).fillna(EMPTY)
       text_data = data['sentence']
-      sources = [[_BOS] + vocab.tokenizer(l, normalize_digits=False) 
+      sources = [[_BOS] + vocab.word.tokenizer(l, normalize_digits=False) 
                  for l in text_data]
       pos_tokens = common.get_pos(sources, output_path=pathes.train)
     else:
       pos_tokens = []
-    pos_vocab = FeatureVocab(pos_vocab_path, pos_tokens)
-    PackedDatasetBase.__init__(self, dataset_type, pathes, num_train_data, vocab, pos_vocab, *args, **kwargs)
+    vocab.pos = FeatureVocab(pos_vocab_path, pos_tokens, start_vocab=[_PAD, _BOS, _EOS, _UNK])
+    vocab.wtype = FeatureVocab(None, [])
 
-# class PriceDatasetWithFeatures(PackedDatasetBase):
-#   dataset_type = _PriceDatasetWithFeatures
-#   def __init__(self, pathes, vocab, target_columns, 
-#                num_train_data=0, no_train=False):
-#     train_path, valid_path, test_path = pathes.train, pathes.valid, pathes.test
-#     self.train = self.dataset_type(
-#       train_path, vocab, 
-#       pos_vocab=pos_vocab, num_lines=num_train_data) if not no_train else None
-#     self.valid = self.dataset_type(valid_path, vocab, target_columns, pos_vocab=pos_vocab)
-#     self.test = self.dataset_type(test_path, vocab, target_columns, pos_vocab=pos_vocab)
-
-#     pos_lists = Counter(common.flatten(self.train.pos)).keys() if self.train else None
-#     pos_vocab = FeatureVocab
-
-
-
-
+    PackedDatasetBase.__init__(self, dataset_type, pathes, num_train_data, vocab, *args, **kwargs)
