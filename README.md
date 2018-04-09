@@ -44,7 +44,7 @@ For convinience, several arguments listed in **run.sh** can be dynamically speci
  ./run.sh checkpoints/tmp train configs/config --batch_size=100 --test_data_path=dataset/test.csv
 ```
 
-### Items and directories
+### Structure of root directory
 ```
 ├── checkpoints      # The directory to restore your trained models.
 ├── configs          # The directory to put your initial config files in.
@@ -56,6 +56,17 @@ For convinience, several arguments listed in **run.sh** can be dynamically speci
 ├── scripts          # Miscellaneous scripts mainly to analyze the results.
 └── src              # The main codes of this project.
 ```
+
+### Structure of model directory
+```
+├── checkpoints    # The directory to put the actual checkpoints (parameters) in.
+├── config         # Config file of this model. 
+├── summaries      # The directory to put the eventfiles of Tensorboard in.
+├── tests          # The directory to put the result of testing in.
+├── *.log          # Logging files of each mode.
+└── variables.list # The list of all variables restored in the model.
+```
+
 
 ### Other useful tools
 ##### Tensorboard

@@ -147,29 +147,6 @@ class PointerNetwork(ModelBase):
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
 
-    sys.stdout = sys.stderr
-    for k,v in feed_dict.items():
-      print k, v
-    print 'batch.sources'
-    for i, x in enumerate(batch.sources):
-      print self.vocab.word.ids2tokens(x, remove_special=True)
-
-
-    print 'batch.original_sources'
-    for i,x in  enumerate(batch.original_sources):
-      print i, x
-
-    print 'batch.targets'
-    for i,x in  enumerate(batch.targets):
-      print i, x
-    #exit(1)
-    # last = list(self.vocab.rev_vocab)[-1]
-    # print last
-    # print self.vocab.vocab[last]
-    # for x in batch.sources:
-    #   print self.vocab.ids2tokens(x)
-    # exit(1)
-    # sys.stdout = sys.__stdout__
     return feed_dict
 
   def debug(self, data):

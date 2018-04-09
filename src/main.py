@@ -75,7 +75,7 @@ class Manager(object):
     if not os.path.exists(self.tests_path):
       os.makedirs(self.tests_path)
 
-    # Overwrite configs by temporary args. They have higher priorities than those in the config of models.
+    # Overwrite configs by temporary args. They have higher priorities than those in the config file.
     if 'dataset_type' in args and args.dataset_type:
       config['dataset_type'] = args.dataset_type
     if 'train_data_path' in args and args.train_data_path:
@@ -110,7 +110,7 @@ class Manager(object):
 
   def save_model(self, model, save_as_best=False):
     '''
-    Restore the trained model. 
+    Restore a trained model. 
     Args: 
       - model: The model object created by create_model().
       - save_as_best: If True, the model in this epoch is copied as 'best' and will be used in testing.
@@ -249,13 +249,15 @@ class Manager(object):
         decode(inp)
 
   def test(self, model=None, dataset=None, verbose=True, in_training=False):
+    """
+    Run extraction using a validation file (in training) or a testing file (in testing). In training, a model on the way of being trained will be passed to this function and do testing to decide which model is the best.
+
+    """
     config = self.config
     if dataset is None:
       dataset = self.dataset.test
-      #dataset = self.dataset.valid
 
-    _, test_filename = common.separate_path_and_filename(
-      dataset.path)
+    _, test_filename = common.separate_path_and_filename(dataset.path)
 
     if model is None: 
       model = self.create_model(
@@ -278,9 +280,6 @@ class Manager(object):
       target_path_prefix=test_output_path, output_types=output_types)
     if in_training:
       self.summary_writer.add_summary(scalar_summary, model.epoch.eval())
-    #else:
-    #  self.summary_writer.add_summary(text_summary, model.epoch.eval())
-    
     return df
 
   @common.timewatch()
