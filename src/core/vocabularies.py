@@ -181,8 +181,17 @@ class PredefinedVocabWithEmbeddingBase(object):
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
-    for k in self.start_vocab:
-      embedding_dict[k] = embedding_dict[k]
+    zero_vector = [0.0 for _ in xrange(embedding_size)]
+    if self.embedding_initialization == 'zero':
+      for k in self.start_vocab:
+        embedding_dict[k] = zero_vector
+    elif self.embedding_initialization == 'random':
+      for k in self.start_vocab:
+        embedding_dict[k] = embedding_dict[k]
+    else:
+      raise ValueError
+    for k in [_PAD, _BOS, _EOS, _UNK]:
+      embedding_dict[k] = zero_vector
 
     for k, v in word_and_emb:
       embedding_dict[k] = v
@@ -239,11 +248,11 @@ class PredefinedVocabWithEmbeddingBase(object):
 class WordVocabularyWithEmbedding(WordVocabularyBase, PredefinedVocabWithEmbeddingBase):
   def __init__(self, emb_configs, start_vocab=START_VOCAB,
                vocab_size=0, lowercase=False, normalize_digits=True, 
-               normalize_embedding=False):
+               embedding_initialization='random'):
     self.start_vocab = start_vocab
+    self.embedding_initialization=embedding_initialization
     self.tokenizer = WordTokenizer(lowercase=lowercase,
                                    normalize_digits=normalize_digits)
-    self.normalize_embedding = normalize_embedding
     self.vocab, self.rev_vocab, self.embeddings = self.init_vocab(
       emb_configs, vocab_size)
 

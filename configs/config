@@ -3,7 +3,7 @@
 # Text processing.
 input_max_len = 30      # The maximum length of the input sentence in training.
 output_max_len = 5      # The maximum length of the output label.
-vocab_size = 10000          # The maximum size of the vocabulary. if 0, use all.
+vocab_size = 1000          # The maximum size of the vocabulary. if 0, use all.
 lowercase=true          # Whether to convert words into lowercase or not.
 num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
 target_attribute=Price       # The targetted attribute. It is mainly used to decide the words to be normalizd.
@@ -18,22 +18,24 @@ max_gradient_norm = 5.0 #
 decay_rate = 0.999      #
 decay_frequency = 100   #
 dropout_rate=0.2        # The dropout ratio in training. 
-train_embedding=true    # Whether to retrain the pretrained embeddings or not.
+train_embedding=true    # Whether to train the initial embeddings or not.
 teacher_forcing=false   # Whether to force the model to input the gold target labels in training regardless of the model's choice.
 share_decoder=false
 batch_size=10           # Batch size.
+embedding_initialization=random # [random, zero]
 
 # Structure.
 num_layers=1                          # The number of layers in MultiRNNCell.
 rnn_size=50                           # The dimension of RNN, and other layers.
 rnn_type=bidirectional_dynamic_rnn    # The name of rnn function in tensorflow.
 cell_type=GRUCell                     # The name of RNNCell class in tensorflow.
-model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+#model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+model_type=PointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
 #dataset_type=NumNormalizedPriceDataset
 #dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
-#dataset_type=AllNormalizedPriceDataset
-dataset_type=PriceDataset
+dataset_type=AllNormalizedPriceDataset
+#dataset_type=PriceDataset
 #dataset_type=PriceDatasetWithFeatures
 features=[] # Additional features besides words. Acceptable feature types: [pos,wtype ]
 feature_size=20
@@ -43,8 +45,7 @@ dataset_path { # The train/valid/test dataset.
   test = dataset/test.price.csv
   valid = dataset/valid.price.csv
   #train = dataset/train.price.csv
-  train = dataset/train.price.balanced.csv
-
+  train = dataset/train.price.csv
 }
 #Pretrained embeddings.
 embedding_path=dataset/embeddings   # The directory where to put your pretrained embeddings file.

@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from utils import common, evaluation, tf_utils
 from core import models, datasets
-from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD, _NUM, _UNIT
+from core.vocabularies import WordVocabularyWithEmbedding, _BOS, _PAD, _UNK, _NUM, _UNIT
 
 tf_config = tf.ConfigProto(
   log_device_placement=False, # If True, all the placement of variables will be logged. 
@@ -22,7 +22,7 @@ tf_config = tf.ConfigProto(
 default_config = common.recDotDict({
   'share_decoder': False,
   'target_columns': ['LB', 'UB', 'Unit', 'Rate'],
-  'normalize_digits': False,
+  'normalize_digits': True,
   'features': [],
 })
 
@@ -43,8 +43,8 @@ class Manager(object):
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase,
         normalize_digits=self.config.normalize_digits,
+        embedding_initialization=self.config.embedding_initialization,
       ) if vocab is None else vocab
-
       self.dataset = getattr(datasets, self.config.dataset_type)(
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
@@ -82,6 +82,8 @@ class Manager(object):
       config['dataset_path']['train'] = args.train_data_path
     if 'test_data_path' in args and args.test_data_path:
       config['dataset_path']['test'] = args.test_data_path
+    if 'num_train_data' in args and args.num_train_data:
+      config['num_train_data'] = args.num_train_data 
     if 'vocab_size' in args and args.vocab_size:
       config['vocab_size'] = args.vocab_size
     if 'batch_size' in args and args.batch_size:
@@ -161,7 +163,17 @@ class Manager(object):
     dataset = self.dataset.test
     batches = self.dataset.train.get_batch(
       self.config.batch_size, input_max_len=self.config.input_max_len, 
-      output_max_len=self.config.output_max_len, shuffle=False)
+      output_max_len=self.config.output_max_len, shuffle=True)
+    #for w in [_PAD,_BOS,  _UNK, _NUM, _UNIT]:
+    for b in batches:
+      for s1, s2 in zip(b.sources, b.original_sources):
+        print '-------------'
+        print self.vocab.word.ids2tokens(s1)
+        print s2
+      exit(1)
+      #print w, e[:5]
+
+    exit(1)
     for b in batches:
       for k, v in b.items():
         print k
@@ -353,6 +365,8 @@ if __name__ == "__main__":
                       help="The argument to overwrite config.batch_size")
   parser.add_argument("--vocab_size", default=None, type=int,
                       help="The argument to overwrite config.vocab_size")
+  parser.add_argument("--num_train_data", default=None, type=int,
+                      help="The argument to overwrite config.num_train_data")
   parser.add_argument("--target_attribute", default=None, type=str)
   args  = parser.parse_args()
   main(args)

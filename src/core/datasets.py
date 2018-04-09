@@ -1,6 +1,6 @@
 #coding: utf-8
 import tensorflow as tf
-import sys, re, random, itertools, os
+import sys, re, random, itertools, os, copy
 import numpy as np
 import pandas as pd
 from collections import OrderedDict, Counter
@@ -123,16 +123,18 @@ class _PriceDataset(DatasetBase):
     '''
     '''
     sources, targets = self.symbolized
+    original_sources = self.original_sources
     if input_max_len:
-      paired = [(s,t) for s,t in zip(sources, targets) if not len(s) > input_max_len]
-      sources, targets = list(zip(*paired))
+      data = [(s,t, ori_s) for s,t, ori_s in zip(sources, targets, original_sources) if not len(s) > input_max_len]
+      sources, targets, original_sources = list(zip(*data))
 
     sources =  tf.keras.preprocessing.sequence.pad_sequences(sources, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
     targets = list(zip(*targets)) # to column-major. (for padding)
     targets = [tf.keras.preprocessing.sequence.pad_sequences(targets_by_column, maxlen=output_max_len, padding='post', truncating='post', value=PAD_ID) for targets_by_column in targets]
     targets = list(zip(*targets)) # to idx-major. (for shuffling)
 
-    data = sources, targets, self.original_sources
+    data = sources, targets, original_sources
+    assert len(set([len(x) for x in data])) == 1
     return data
 
   def yield_batch(self, batch):
@@ -161,8 +163,20 @@ class _PriceDataset(DatasetBase):
     data = self.get_batch_data(input_max_len=input_max_len,
                                output_max_len=output_max_len)
     data = list(zip(*data))
+    
+    print '!!!!!!!!!!!!!!!!!!!!!!!'
+    print self.vocab.word.ids2tokens(data[0][0])
+    print data[0][2]
+    print data[0][1]
+    print '!!!!!!!!!!!!!!!!!!!!!!!'
     if shuffle: # For training.
       random.shuffle(data)
+    print '!!!!!!!!!!!!!!!!!!!!!!!'
+    print self.vocab.word.ids2tokens(data[0][0])
+    print data[0][2]
+    print data[0][1]
+    print '!!!!!!!!!!!!!!!!!!!!!!!'
+    exit(1)
     for i, b in itertools.groupby(enumerate(data), 
                                   lambda x: x[0] // (batch_size)):
       b = [x[1] for x in b] # remove 'i'.
@@ -275,14 +289,6 @@ class _PriceDataset(DatasetBase):
       ('less', (less_cond, lower_upper_success)),
       ('more', (more_cond, lower_upper_success)),
       ('rate', (rate_cond, rate_success)),
-      # ('exact_rate', (lambda g: exact_cond(g) and rate_cond(g), all_success)),
-      # ('exact_multi', (lambda g: exact_cond(g) and multi_cond(g), all_success)),
-      # ('range_rate', (lambda g: range_cond(g) and rate_cond(g), all_success)),
-      # ('range_multi', (lambda g: range_cond(g) and multi_cond(g), all_success)),
-      # ('more_rate', (lambda g: more_cond(g) and rate_cond(g), all_success)),
-      # ('more_multi', (lambda g: more_cond(g) and multi_cond(g), all_success)),
-      # ('less_rate', (lambda g: less_cond(g) and rate_cond(g), all_success)),
-      # ('less_multi', (lambda g: less_cond(g) and multi_cond(g), all_success)),
     ]
     if output_types is not None:
       conditions = [c for c in conditions if c[0] in output_types]
@@ -411,6 +417,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 
   def load_data(self):
     _PriceDataset.load_data(self)
+    self.pos = self.get_pos(self.original_sources, self.path)
     self.original_sources, self.targets, self.num_indices = self.concat_numbers(
       self.original_sources, self.targets, self.pos 
     )

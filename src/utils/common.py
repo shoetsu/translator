@@ -65,6 +65,7 @@ def get_pos(sents, output_path=None):
       os.system('cp %s %s' % (tmp_filepath + suffix, output_path))
     os.system('rm %s' % (tmp_filepath))
     os.system('rm %s%s' % (tmp_filepath, suffix))
+    
   try:
     assert len(pos_tags) == len(sents)
   except:

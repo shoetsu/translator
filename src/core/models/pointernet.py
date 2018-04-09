@@ -146,14 +146,23 @@ class PointerNetwork(ModelBase):
       feed_dict[self.pos_inputs_ph] = batch.pos
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
-    # sys.stdout = sys.stderr
-    # for k,v in feed_dict.items():
-    #   print k, v
-    # for x in batch.sources:
-    #   print self.vocab.ids2tokens(x, remove_special=False)
-    # for x in batch.original_sources:
-    #   print x
-    # exit(1)
+
+    sys.stdout = sys.stderr
+    for k,v in feed_dict.items():
+      print k, v
+    print 'batch.sources'
+    for i, x in enumerate(batch.sources):
+      print self.vocab.word.ids2tokens(x, remove_special=True)
+
+
+    print 'batch.original_sources'
+    for i,x in  enumerate(batch.original_sources):
+      print i, x
+
+    print 'batch.targets'
+    for i,x in  enumerate(batch.targets):
+      print i, x
+    #exit(1)
     # last = list(self.vocab.rev_vocab)[-1]
     # print last
     # print self.vocab.vocab[last]
@@ -223,7 +232,7 @@ class IndependentPointerNetwork(PointerNetwork):
     self.is_training = [m.is_training for m in models]
     self.greedy_predictions = [m.greedy_predictions[0] for m in models]
     self.loss = tf.reduce_mean([m.loss for m in models])
-    self.updates = self.get_updates(self.loss)
+    self.updates = [self.get_updates(m.loss) for m in models]
 
   def get_input_feed(self, batch, is_training):
     feed_dict = {}
