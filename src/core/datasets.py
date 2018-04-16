@@ -90,6 +90,13 @@ class _PriceDataset(DatasetBase):
     self.sources = []
     self.targets = []
     self.all_columns = []
+    self.loaded = False
+  @property
+  def size(self):
+    if not self.loaded:
+      return None
+    else:
+      return len(self.sources)
 
   def get_pos(self, texts, path=None):
     pos = common.get_pos(texts, output_path=path)
@@ -118,6 +125,7 @@ class _PriceDataset(DatasetBase):
         raise ValueError('The name of column must be in the label columns of data. (\'%s\' not found in %s)' % (c, str(self.all_columns)))
     self.targets = [[self.vocab.word.tokenizer(x, normalize_digits=False) for x in data[col].values] for col in self.all_columns]
     self.targets = list(zip(*self.targets)) # to batch-major.
+    self.loaded = True
 
   def get_batch_data(self, input_max_len, output_max_len):
     '''
@@ -156,7 +164,7 @@ class _PriceDataset(DatasetBase):
 
   def get_batch(self, batch_size,
                 input_max_len=None, output_max_len=None, shuffle=False):
-    if not self.sources:
+    if not self.loaded:
       self.load_data() # lazy loading.
 
     # get_batch_data() and yield_batch() can be overwritten in the child to feed extra inputs. 
@@ -164,19 +172,8 @@ class _PriceDataset(DatasetBase):
                                output_max_len=output_max_len)
     data = list(zip(*data))
     
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    print self.vocab.word.ids2tokens(data[0][0])
-    print data[0][2]
-    print data[0][1]
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
     if shuffle: # For training.
       random.shuffle(data)
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    print self.vocab.word.ids2tokens(data[0][0])
-    print data[0][2]
-    print data[0][1]
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    exit(1)
     for i, b in itertools.groupby(enumerate(data), 
                                   lambda x: x[0] // (batch_size)):
       b = [x[1] for x in b] # remove 'i'.
@@ -518,6 +515,21 @@ class _PriceDatasetWithFeatures(_PriceDataset):
                num_lines=0):
     _PriceDataset.__init__(self, data_path, vocab, target_attribute, 
                            target_columns, num_lines=num_lines)
+  @property
+  def wtypes(self):
+    wtypes = []
+    for s, p in zip(self.original_sources, self.pos):
+      s = unit_normalize(s, self.target_attribute)
+      unit_idx = [i for i, x in enumerate(s) if x == _UNIT]
+      num_idx = [i for i, x in enumerate(p) if x == 'CD']
+      wtype = [EMPTY for _ in s]
+      for i in unit_idx:
+        wtype[i] = _UNIT
+      for i in num_idx:
+        wtype[i] = _NUM
+      wtypes.append(wtype)
+    return wtypes
+
   def load_data(self):
     super(_PriceDatasetWithFeatures, self).load_data()
     self.pos = self.get_pos(self.original_sources, self.path)
@@ -527,10 +539,12 @@ class _PriceDatasetWithFeatures(_PriceDataset):
     data = _PriceDataset.get_batch_data(self, input_max_len, output_max_len)
     pos = [self.vocab.pos.tokens2ids(p) for p in self.pos]
     pos = tf.keras.preprocessing.sequence.pad_sequences(pos, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
-    return data + tuple([pos])
+    wtype = [self.vocab.wtype.tokens2ids(wt) for wt in self.wtypes]
+    wtype = tf.keras.preprocessing.sequence.pad_sequences(wtype, maxlen=input_max_len, padding='post', truncating='post', value=PAD_ID)
+    return data + tuple([pos, wtype])
 
   def yield_batch(self, batch_by_column):
-    b_sources, b_targets, b_ori_sources, b_pos= batch_by_column
+    b_sources, b_targets, b_ori_sources, b_pos, b_wtype = batch_by_column
     b_targets = list(zip(*b_targets)) # to column-major.
     return common.dotDict({
       'sources': np.array(b_sources),
@@ -539,6 +553,7 @@ class _PriceDatasetWithFeatures(_PriceDataset):
                   if col in self.target_columns],
       'original_sources': b_ori_sources,
       'pos': b_pos,
+      'wtype': b_wtype,
     })
 
 
@@ -594,6 +609,6 @@ class PriceDatasetWithFeatures(PackedDatasetBase):
     else:
       pos_tokens = []
     vocab.pos = FeatureVocab(pos_vocab_path, pos_tokens, start_vocab=[_PAD, _BOS, _EOS, _UNK])
-    vocab.wtype = FeatureVocab(None, [])
+    vocab.wtype = FeatureVocab(None, ['-'])
 
     PackedDatasetBase.__init__(self, dataset_type, pathes, num_train_data, vocab, *args, **kwargs)

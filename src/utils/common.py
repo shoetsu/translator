@@ -51,7 +51,7 @@ def get_pos(sents, output_path=None):
   sys.stderr.write(output_path+'\n')
   if output_path and os.path.exists(output_path):
     sys.stderr.write("Reading the POS file...\n")
-    pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (output_path)).split('\n\n')]
+    pos_tags = [[x for x in l.split('\n') if x] for l in commands.getoutput('cut -f2 %s' % (output_path)).split('\n\n')][:len(sents)]
   else:
     sys.stderr.write("Runnning POS Tagger...\n")
     tmp_filepath = restore_to_tmpfile(sents, tmp_dir='/tmp')

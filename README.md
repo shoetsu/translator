@@ -1,4 +1,4 @@
-# Translator
+# Pointernet-extractor
 
 The imprementation of the model to extract values for various attributes from the input sentence based on [Pointer Networks](https://arxiv.org/abs/1506.03134).
 
@@ -13,6 +13,15 @@ pip install -r requirements.txt
 ```bash
 python scripts/setup_nltk.py
 ```
+
+- Download pretrained embeddings.
+
+```bash
+cd dataset/embeddings
+curl -O https://lil.cs.washington.edu/coref/turian.50d.txt
+curl -O https://nlp.stanford.edu/data/glove.840B.300d.zip
+```
+
 
 - **(optional)** Download Stanford POS tagger and add its path to your environment variable.
 
@@ -59,12 +68,12 @@ For convinience, several arguments listed in **run.sh** can be dynamically speci
 
 ### Structure of model directory
 ```
-├── checkpoints    # The directory to put the actual checkpoints (parameters) in.
-├── config         # Config file of this model. 
-├── summaries      # The directory to put the eventfiles of Tensorboard in.
-├── tests          # The directory to put the result of testing in.
-├── *.log          # Logging files of each mode.
-└── variables.list # The list of all variables restored in the model.
+├── checkpoints     # The directory to put the actual checkpoints (parameters) in.
+├── config          # Config file of this model. 
+├── summaries       # The directory to put the eventfiles of Tensorboard in.
+├── tests           # The directory to put the result of testing in.
+├── *.log           # Logging files of each mode.
+└── variables.list  # The list of all variables restored in the model.
 ```
 
 

@@ -5,6 +5,7 @@ from pprint import pprint
 
 import tensorflow as tf
 from utils.tf_utils import shape
+from utils.common import flatten
 from core.models import ModelBase, setup_cell
 from core.models.encoder import SentenceEncoder #WordEncoder, 
 from core.extensions.pointer import pointer_decoder 
@@ -27,7 +28,7 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
 
   with tf.name_scope('add_bos'):
     d_inputs = tf.concat([tf.zeros([batch_size, 1], dtype=tf.int32), d_outputs_ph], axis=1)
-  
+
   # TODO: for some reason, setting teacher_forcing==True in training makes the performance worse...
   with tf.name_scope('train_decoder'):
     d_outputs, d_states, copied_inputs  = pointer_decoder(
@@ -45,7 +46,18 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
 
 
 class PointerNetwork(ModelBase):
-  def __init__(self, sess, config, vocab):
+  def __init__(self, sess, config, vocab, 
+               w_embeddings=None, pos_embeddings=None, wtype_embeddings=None):
+    """
+    The main class of Pointernetwork.
+
+    Args:
+     - sess: A session of Tensorflow (tf.Session).
+     - config: Parsed config (common.recDotDict).
+     - vocab: A set of vocabularies. (e.g. vocab.word = vocabularies.WordVocabularyWithEmbedding, ...)
+     - w_embeddings, pos_embeddings, wtype_embeddings: Variables of Tensorflow. These arguments are filled in only via the class 'IndependentPointerNetwork' to have shared embeddings.
+
+    """
     ModelBase.__init__(self, sess, config)
     self.vocab = vocab
     self.use_pos = 'pos' in config.features
@@ -70,32 +82,33 @@ class PointerNetwork(ModelBase):
       batch_size = shape(self.e_inputs_ph, 0)
 
     with tf.variable_scope('Embeddings') as scope:
-      e_inputs_emb = []
+      e_inputs_emb = [] 
+      if w_embeddings is None:
+        w_embeddings = self.initialize_embeddings(
+          'Word', vocab.word.embeddings.shape, 
+          initializer=tf.constant_initializer(vocab.word.embeddings),
+          trainable=config.train_embedding)
 
-      w_embeddings = self.initialize_embeddings(
-        'Word', vocab.word.embeddings.shape, 
-        initializer=tf.constant_initializer(vocab.word.embeddings),
-        trainable=config.train_embedding)
       e_inputs_emb.append(tf.nn.embedding_lookup(w_embeddings, self.e_inputs_ph))
-      
-      if self.use_pos:
+
+      if self.use_pos and pos_embeddings is None:
         pos_embeddings = self.initialize_embeddings(
           'POS', [vocab.pos.size, config.feature_size], 
           trainable=True)
         e_inputs_emb.append(tf.nn.embedding_lookup(pos_embeddings, self.pos_inputs_ph))
-      if 'wtype' in config.features:
+      if self.use_wtype and wtype_embeddings is None:
         wtype_embeddings = self.initialize_embeddings(
           'Wtype', [vocab.wtype.size, config.feature_size], 
           trainable=True)
         e_inputs_emb.append(tf.nn.embedding_lookup(wtype_embeddings, self.wtype_inputs_ph))
+      # All kind of input embeddings per word are concatenated here.
       e_inputs_emb = tf.concat(e_inputs_emb, axis=-1)
       e_inputs_emb = tf.nn.dropout(e_inputs_emb, self.keep_prob)
 
-    with tf.variable_scope('SentEncoder') as scope:
-      sent_encoder = SentenceEncoder(config, self.keep_prob, 
-                                          shared_scope=scope)
+    with tf.variable_scope('Encoder') as scope:
+      encoder = SentenceEncoder(config, self.keep_prob, shared_scope=scope)
       e_inputs_length = tf.count_nonzero(self.e_inputs_ph, axis=1)
-      e_outputs, e_state = sent_encoder.encode(
+      e_outputs, e_state = encoder.encode(
         e_inputs_emb, e_inputs_length)
       attention_states = e_outputs
 
@@ -112,11 +125,10 @@ class PointerNetwork(ModelBase):
       with tf.variable_scope(ds_name) as scope:
         d_cell = setup_cell(config.cell_type, config.rnn_size, config.num_layers,
                             keep_prob=self.keep_prob)
-        teacher_forcing = config.teacher_forcing if 'teacher_forcing' in config else False
         d_outputs, predictions, copied_inputs = setup_decoder(
           d_outputs_ph, e_inputs_emb, e_state, attention_states, d_cell, 
           batch_size, output_max_len, scope=scope, 
-          teacher_forcing=teacher_forcing)
+          teacher_forcing=config.teacher_forcing)
         self.copied_inputs.append(copied_inputs)
         d_outputs_length = tf.count_nonzero(d_outputs_ph, axis=1, 
                                             name='outputs_length')
@@ -138,6 +150,12 @@ class PointerNetwork(ModelBase):
     self.updates = self.get_updates(self.loss)
 
   def get_input_feed(self, batch, is_training):
+    '''
+    Deliver actual inputs from batch to the placeholders.
+    Args:
+     - batch: a dictionary (common.dotDict)
+     - is_training: A boolean. 
+    '''
     feed_dict = {
       self.e_inputs_ph: batch.sources,
       self.is_training: is_training
@@ -165,6 +183,7 @@ class PointerNetwork(ModelBase):
       feed_dict = self.get_input_feed(batch, True)
       t = time.time()
       step_loss, _ = self.sess.run([self.loss, self.updates], feed_dict)
+
       step_loss = np.mean(step_loss)
       epoch_time += time.time() - t
       loss += math.exp(step_loss)
@@ -194,11 +213,30 @@ class IndependentPointerNetwork(PointerNetwork):
     self.use_pos = 'pos' in config.features
     self.use_wtype = 'wtype' in config.features
 
+
+    with tf.variable_scope('Embeddings') as scope:
+      self.use_pos = 'pos' in config.features
+      self.use_wtype = 'wtype' in config.features
+      w_embeddings = self.initialize_embeddings(
+        'Word', vocab.word.embeddings.shape, 
+        initializer=tf.constant_initializer(vocab.word.embeddings),
+        trainable=config.train_embedding)
+
+      pos_embeddings = self.initialize_embeddings(
+        'POS', [vocab.pos.size, config.feature_size], 
+        trainable=True) if self.use_pos else None
+      wtype_embeddings = self.initialize_embeddings(
+        'Wtype', [vocab.wtype.size, config.feature_size], 
+        trainable=True) if self.use_wtype else None
+
     target_columns = config.target_columns
     for col in target_columns:
       with tf.variable_scope(col):
         config.target_columns = [col]
-        model = PointerNetwork(sess, config, vocab)
+        model = PointerNetwork(sess, config, vocab, 
+                               w_embeddings=w_embeddings,
+                               pos_embeddings=pos_embeddings,
+                               wtype_embeddings=wtype_embeddings)
         self.models.append(model)
     config.target_columns = target_columns
 
@@ -206,10 +244,11 @@ class IndependentPointerNetwork(PointerNetwork):
     self.pos_inputs_ph = [m.pos_inputs_ph for m in models]
     self.wtype_inputs_ph = [m.wtype_inputs_ph for m in models]
     self.d_outputs_ph = [m.d_outputs_ph[0] for m in models]
+    self.copied_inputs = [m.copied_inputs[0] for m in models]
     self.is_training = [m.is_training for m in models]
     self.greedy_predictions = [m.greedy_predictions[0] for m in models]
     self.loss = tf.reduce_mean([m.loss for m in models])
-    self.updates = [self.get_updates(m.loss) for m in models]
+    self.updates = self.get_updates(self.loss) #[self.get_updates(m.loss) for m in models]
 
   def get_input_feed(self, batch, is_training):
     feed_dict = {}

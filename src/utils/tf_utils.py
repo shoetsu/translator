@@ -7,8 +7,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
 
-_BIAS_VARIABLE_NAME = "bias"
-_WEIGHTS_VARIABLE_NAME = "kernel"
 
 def shape(x, dim):
   return x.get_shape()[dim].value or tf.shape(x)[dim]
@@ -94,6 +92,9 @@ def ffnn(inputs, num_hidden_layers, hidden_size, output_size, dropout, output_we
 def projection(inputs, output_size, initializer=None):
   return ffnn(inputs, 0, -1, output_size, dropout=None, output_weights_initializer=initializer)
 
+
+_BIAS_VARIABLE_NAME = "bias"
+_WEIGHTS_VARIABLE_NAME = "kernel"
 
 def _linear(args,
             output_size,

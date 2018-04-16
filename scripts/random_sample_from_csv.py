@@ -2,9 +2,10 @@
 import argparse, re, sys, os, random
 import pandas as pd
 random.seed(0)
+
 def main(args):
   df = pd.read_csv(args.file_path)
-  res = random.sample(df.values.tolist(), 833)
+  res = random.sample(df.values.tolist(), args.n_sample)
   res = list(zip(*res))
   new_df = pd.DataFrame()
   for col, val in zip(df, res):
@@ -15,6 +16,7 @@ def main(args):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("file_path")
+  parser.add_argument("n_sample")
   args  = parser.parse_args()
   main(args)
 

@@ -43,14 +43,11 @@ class Manager(object):
         vocab_size=self.config.vocab_size, 
         lowercase=self.config.lowercase,
         normalize_digits=self.config.normalize_digits,
-        embedding_initialization=self.config.embedding_initialization,
       ) if vocab is None else vocab
       self.dataset = getattr(datasets, self.config.dataset_type)(
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
-      #self.vocab.pos = self.dataset.train.vocab.pos 
-      #self.vocab.wtype = self.dataset.train.vocab.wtype
 
   def load_config(self, args):
     '''
@@ -99,7 +96,7 @@ class Manager(object):
         sys.stdout = f
         common.print_config(config)
         sys.stdout = sys.__stdout__
-    config = common.recDotDict(config)
+    config = common.recDotDict(config) # Allows dot-access.
 
     # The default config for old models which don't have some recently added hyperparameters will be overwritten if a model has the corresponding hyperparameters.
     default_config.update(config)
@@ -146,6 +143,7 @@ class Manager(object):
       self.logger.info('(Epoch %d) Train loss: %.3f (%.1f sec)' % (epoch, loss, epoch_time))
       df = self.test(model=model, dataset=self.dataset.valid,
                      in_training=True)
+      # Take the average accuracy as score to update the best model.
       average_accuracy = np.mean(df.values.tolist()[0])
       if len(testing_results) == 0 or average_accuracy > max(testing_results):
         save_as_best = True
@@ -326,6 +324,7 @@ def main(args):
     manager = Manager(args, sess)
     if args.mode == 'train':
       manager.train()
+      manager.test()
     elif args.mode == 'test':
       manager.test()
     elif args.mode == 'demo':
@@ -335,13 +334,12 @@ def main(args):
     else:
       raise ValueError('args.mode must be \'train\', \'test\', or \'demo\'.')
 
-  if args.mode == 'train':
-    vocab = manager.vocab
-    with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
-      tf.set_random_seed(0)
-      manager = Manager(args, sess, vocab=vocab)
-      manager.test()
-  return manager
+  # if args.mode == 'train':
+  #   with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
+  #     tf.set_random_seed(0)
+  #     manager = Manager(args, sess, vocab=vocab)
+  #     manager.test()
+  # return manager
 
 if __name__ == "__main__":
   desc = ''

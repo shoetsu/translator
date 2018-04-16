@@ -121,7 +121,7 @@ class WordVocabularyBase(VocabularyBase):
 
   def str2ids(self, sentence):
     # sentence : a string.
-    # res :a list of integer.
+    # res : a list of integer.
 
     tokens = self.tokenizer(sentence) 
     return [self.token2id(word) for word in tokens]
@@ -129,8 +129,8 @@ class WordVocabularyBase(VocabularyBase):
   def tokens2ids(self, tokens):
     if type(tokens) == list:
       res = [self.token2id(word) for word in tokens]
-    elif type(tokens) == tf.Tensor and self.lookup_table:
-      res = self.lookup_table.lookup(tokens)
+    # elif type(tokens) == tf.Tensor and self.lookup_table:
+    #   res = self.lookup_table.lookup(tokens)
     else:
       raise ValueError
     return res
@@ -161,12 +161,14 @@ class PredefinedVocabWithEmbeddingBase(object):
     sys.stderr.write("Loading word embeddings from {}...\n".format(embedding_path))
     embedding_dict = None
 
-    word_and_emb = []
+    word_and_emb = collections.OrderedDict()
+    embedding_size = None
     with open(embedding_path) as f:
+      # Accumulate words and embeddings from existing pretrained embeddings up to 'vocab_size'.
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
-        if vocab_size and len(word_and_emb) > vocab_size:
+        if vocab_size and len(word_and_emb) >= vocab_size:
           break
         #################
         word_and_embedding = line.split()
@@ -176,71 +178,25 @@ class PredefinedVocabWithEmbeddingBase(object):
         else:
           word = word[0]
         embedding = [float(s) for s in word_and_embedding[1:]]
-        word_and_emb.append((word, embedding))
-    embedding_size = len(word_and_emb[0][1])
+        embedding_size = len(embedding)
+        word_and_emb[word] = embedding
+
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
     zero_vector = [0.0 for _ in xrange(embedding_size)]
-    if self.embedding_initialization == 'zero':
-      for k in self.start_vocab:
-        embedding_dict[k] = zero_vector
-    elif self.embedding_initialization == 'random':
-      for k in self.start_vocab:
-        embedding_dict[k] = embedding_dict[k]
-    else:
-      raise ValueError
+
+    for k in self.start_vocab:
+      embedding_dict[k] = embedding_dict[k] # initialize them by random vector.
+
+
+    # For some reason, initializing these tokens by zero_vector makes good results.
     for k in [_PAD, _BOS, _EOS, _UNK]:
       embedding_dict[k] = zero_vector
 
-    for k, v in word_and_emb:
+    for k, v in word_and_emb.items():
       embedding_dict[k] = v
 
-    # ############ TEMPORARY ####################
-    # zero_vector = [0.0 for _ in xrange(embedding_size)]
-    # all_average_vector = np.mean([v for _, v in word_and_emb], axis=0)
-    # num_init_embedding_type = self.num_init_embedding_type
-    # unit_init_embedding_type = self.unit_init_embedding_type
-    # if num_init_embedding_type == 'word_0':
-    #   embedding_dict[_NUM] = embedding_dict['0']
-    # elif num_init_embedding_type == 'average_all':
-    #   embedding_dict[_NUM] = all_average_vector
-    # elif unit_init_embedding_type == 'random':
-    #   embedding_dict[_NUM] = np.random.uniform(-math.sqrt(3), math.sqrt(3),
-    #                                            size=embedding_size)
-    # elif num_init_embedding_type == 'average_selective':
-    #   average_vec = []
-    #   for word in embedding_dict:
-    #     if re.match('^[0-9]+$', word):
-    #       average_vec.append(embedding_dict[word])
-    #   average_vec = np.mean(average_vec, axis=0)
-    #   embedding_dict[_NUM] = average_vec
-    # elif num_init_embedding_type == 'zero_vector':
-    #   embedding_dict[_NUM] = zero_vector
-    # else:
-    #   raise ValueError
-
-    # if unit_init_embedding_type == 'word_unit':
-    #   embedding_dict[_UNIT] = embedding_dict['unit']
-    # elif unit_init_embedding_type == 'word_0':
-    #   embedding_dict[_UNIT] = embedding_dict['0']
-    # elif unit_init_embedding_type == 'average_all':
-    #   embedding_dict[_UNIT] = all_average_vector
-    # elif unit_init_embedding_type == 'random':
-    #   embedding_dict[_UNIT] = np.random.uniform(-math.sqrt(3), math.sqrt(3), 
-    #                                             size=embedding_size)
-    # elif unit_init_embedding_type == 'average_selective':
-    #   unit_names = ['yen', 'dollar', 'euro', 'franc', 'pound', 'cent', 'buck']
-    #   unit_names += [x+'s' for x in unit_names]
-    #   unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
-    #   unit_tokens = unit_names + unit_symbols
-    #   average_vec = np.mean([embedding_dict[t] for t in unit_tokens 
-    #                          if t in embedding_dict], axis=0)
-    #   embedding_dict[_UNIT] = average_vec
-    # elif unit_init_embedding_type == 'zero_vector':
-    #   embedding_dict[_UNIT] = zero_vector
-    # else:
-    #   raise ValueError
     sys.stderr.write("Done loading word embeddings.\n")
     return embedding_dict
 
