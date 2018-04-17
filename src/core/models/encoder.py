@@ -16,7 +16,7 @@ from utils.tf_utils import linear
 #     state = tf.concat(state, 1)
 #   return state
 
-def merge_state(state, rnn_size=None, activation=tf.nn.tanh):
+def merge_state(state, rnn_size, activation=tf.nn.tanh):
   """
   This function assumes that the state is an output from 'tf.nn.bidirectional_dynamic_rnn' i.e. state = (fw_state, bw_state). the state can also be a nested tuple such as state = ((fw_state_0, fw_state_1, ...), (bw_state_0, bw_state_1)) if our RNN has multiple layers. 
   """
@@ -26,6 +26,7 @@ def merge_state(state, rnn_size=None, activation=tf.nn.tanh):
   if isinstance(state[0], LSTMStateTuple):
     raise NotImplementedError
   print 'state', state
+  print 'rnn_size', rnn_size
   if type(state[0]) == tuple: # num_layers >= 2
     new_state = []
     for fs, bs in zip(*state):
@@ -39,7 +40,6 @@ def merge_state(state, rnn_size=None, activation=tf.nn.tanh):
     new_state = tf.concat(state, 1)
     new_state = linear(new_state, rnn_size, activation=activation)
   return new_state
-
 
 
 class SentenceEncoder(object):
@@ -72,5 +72,5 @@ class SentenceEncoder(object):
         outputs = linear(outputs, self.rnn_size)
         outputs = tf.nn.dropout(outputs, self.keep_prob)
       with tf.variable_scope("state"):
-        state = merge_state(state)
+        state = merge_state(state, self.rnn_size)
     return outputs, state

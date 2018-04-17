@@ -1,18 +1,19 @@
 # This config file is assumed to be parsed pyhocon.
 
-# Text processing.
+# Data processing.
 input_max_len = 30      # The maximum length of the input sentence in training.
 output_max_len = 5      # The maximum length of the output label.
 vocab_size = 20000          # The maximum size of the vocabulary. if 0, use all.
 lowercase=true          # Whether to convert words into lowercase or not.
-num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
+normalize_digits=true  # Whether to convert all the arabic numbers into 0. If you are going to employ NumNormalizedDataset or AllNormalizedDataset, it's not necessary.
 target_attribute=Price       # The targetted attribute. It is mainly used to decide the words to be normalizd.
 target_columns=[LB,UB,Unit,Rate] # The columns to be used. They all must be in the name of columns in the dataset.
 
 
 # Training hyperparameters.
+num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
 max_to_keep = 1         # The number of checkpoints kept.
-max_epoch = 30          # The number of epochs in training.
+max_epoch = 20          # The number of epochs in training.
 learning_rate = 0.001   # Learning rate.
 max_gradient_norm = 5.0 # 
 decay_rate = 0.999      #
@@ -25,11 +26,12 @@ batch_size=100           # Batch size.
 embedding_initialization=random # [random, zero]
 
 # Structure.
+cell_type = GRUCell                   # The type of RNNCell. []
 num_layers=1                          # The number of layers in MultiRNNCell.
-rnn_size=300                           # The dimension of RNN, and other layers.
-rnn_type=bidirectional_dynamic_rnn    # The name of rnn function in tensorflow.
-#model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
-model_type=PointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+rnn_size=300                          # The dimension of RNN, and other layers.
+model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+#model_type=PointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+
 #dataset_type=NumNormalizedPriceDataset
 #dataset_type=CurrencyNormalizedPriceDataset
 #dataset_type=PriceDataset
@@ -38,7 +40,6 @@ dataset_type=PriceDataset
 #dataset_type=PriceDatasetWithFeatures
 features=[] # Additional features besides words. Acceptable feature types: [pos,wtype ]
 feature_size=20
-normalize_digits=true  # Whether to convert all the arabic numbers into 0. If you are going to employ NumNormalizedDataset or AllNormalizedDataset, it's not necessary.
 
 dataset_path { # The train/valid/test dataset.
   test = dataset/test.price.csv
@@ -50,7 +51,7 @@ dataset_path { # The train/valid/test dataset.
 embedding_path=dataset/embeddings   # The directory where to put your pretrained embeddings file.
 embeddings=[${glove_300d_filtered}] 
 glove_300d_filtered {
-  path = ${embedding_path}/glove.840B.300d.txt.filtered
+  path = ${embedding_path}/glove.840B.300d.txt
   size = 300
   skip_first = false
 }
