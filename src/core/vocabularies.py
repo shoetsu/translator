@@ -161,7 +161,8 @@ class PredefinedVocabWithEmbeddingBase(object):
     sys.stderr.write("Loading word embeddings from {}...\n".format(embedding_path))
     embedding_dict = None
 
-    word_and_emb = []
+    word_and_emb = collections.OrderedDict()
+    embedding_size = None
     with open(embedding_path) as f:
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
@@ -176,8 +177,9 @@ class PredefinedVocabWithEmbeddingBase(object):
         else:
           word = word[0]
         embedding = [float(s) for s in word_and_embedding[1:]]
-        word_and_emb.append((word, embedding))
-    embedding_size = len(word_and_emb[0][1])
+        #word_and_emb.append((word, embedding))
+        word_and_emb[word] = embedding
+        embedding_size = len(embedding)
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
@@ -193,7 +195,7 @@ class PredefinedVocabWithEmbeddingBase(object):
     for k in [_PAD, _BOS, _EOS, _UNK]:
       embedding_dict[k] = zero_vector
 
-    for k, v in word_and_emb:
+    for k, v in word_and_emb.items():
       embedding_dict[k] = v
 
     # ############ TEMPORARY ####################

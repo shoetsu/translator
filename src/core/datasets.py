@@ -163,20 +163,8 @@ class _PriceDataset(DatasetBase):
     data = self.get_batch_data(input_max_len=input_max_len,
                                output_max_len=output_max_len)
     data = list(zip(*data))
-    
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    print self.vocab.word.ids2tokens(data[0][0])
-    print data[0][2]
-    print data[0][1]
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
     if shuffle: # For training.
       random.shuffle(data)
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    print self.vocab.word.ids2tokens(data[0][0])
-    print data[0][2]
-    print data[0][1]
-    print '!!!!!!!!!!!!!!!!!!!!!!!'
-    exit(1)
     for i, b in itertools.groupby(enumerate(data), 
                                   lambda x: x[0] // (batch_size)):
       b = [x[1] for x in b] # remove 'i'.
