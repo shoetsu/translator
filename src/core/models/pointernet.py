@@ -93,7 +93,7 @@ class PointerNetwork(ModelBase):
 
     with tf.variable_scope('SentEncoder') as scope:
       sent_encoder = SentenceEncoder(config, self.keep_prob, 
-                                          shared_scope=scope)
+                                     shared_scope=scope)
       e_inputs_length = tf.count_nonzero(self.e_inputs_ph, axis=1)
       e_outputs, e_state = sent_encoder.encode(
         e_inputs_emb, e_inputs_length)
