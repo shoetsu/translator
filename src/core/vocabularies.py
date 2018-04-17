@@ -121,7 +121,7 @@ class WordVocabularyBase(VocabularyBase):
 
   def str2ids(self, sentence):
     # sentence : a string.
-    # res : a list of integer.
+    # res :a list of integer.
 
     tokens = self.tokenizer(sentence) 
     return [self.token2id(word) for word in tokens]
@@ -129,8 +129,8 @@ class WordVocabularyBase(VocabularyBase):
   def tokens2ids(self, tokens):
     if type(tokens) == list:
       res = [self.token2id(word) for word in tokens]
-    # elif type(tokens) == tf.Tensor and self.lookup_table:
-    #   res = self.lookup_table.lookup(tokens)
+    elif type(tokens) == tf.Tensor and self.lookup_table:
+      res = self.lookup_table.lookup(tokens)
     else:
       raise ValueError
     return res
@@ -164,11 +164,10 @@ class PredefinedVocabWithEmbeddingBase(object):
     word_and_emb = collections.OrderedDict()
     embedding_size = None
     with open(embedding_path) as f:
-      # Accumulate words and embeddings from existing pretrained embeddings up to 'vocab_size'.
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
-        if vocab_size and len(word_and_emb) >= vocab_size:
+        if vocab_size and len(word_and_emb) > vocab_size:
           break
         #################
         word_and_embedding = line.split()
@@ -178,19 +177,19 @@ class PredefinedVocabWithEmbeddingBase(object):
         else:
           word = word[0]
         embedding = [float(s) for s in word_and_embedding[1:]]
-        embedding_size = len(embedding)
+        #word_and_emb.append((word, embedding))
         word_and_emb[word] = embedding
-
+        embedding_size = len(embedding)
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
     zero_vector = [0.0 for _ in xrange(embedding_size)]
 
+
+    # Initialize [_NUM, _UNIT] by random vectors, [_PAD, _BOS, _EOS, _UNK] by zero_vectors.
     for k in self.start_vocab:
-      embedding_dict[k] = embedding_dict[k] # initialize them by random vector.
+      embedding_dict[k] = embedding_dict[k]
 
-
-    # For some reason, initializing these tokens by zero_vector makes good results.
     for k in [_PAD, _BOS, _EOS, _UNK]:
       embedding_dict[k] = zero_vector
 

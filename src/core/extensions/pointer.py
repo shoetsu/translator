@@ -48,28 +48,27 @@ from utils.tf_utils import shape, _linear
 def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state, 
                     attention_states, cell,
                     feed_prev=True, dtype=dtypes.float32, scope=None):
+  #print 'encoder_inputs',encoder_inputs_emb
+  #print 'decoder_inputs', decoder_inputs
+  #print 'attention_states', attention_states
   encoder_inputs = encoder_inputs_emb
-  batch_size = shape(attention_states, 0)
+  #attn_length = attention_states.get_shape()[1].value
+  #attn_size = attention_states.get_shape()[2].value
   attn_length = shape(attention_states, 1)
   attn_size = shape(attention_states, 2)
   with tf.name_scope('attention_setup'):
-    # attnw1 = tf.get_variable("AttnW1", [1, attn_size, attn_size])
-    # attention_states = tf.nn.conv1d(attention_states, attnw1, 1, 'SAME')
-    attnw1 = tf.get_variable("AttnW1", [attn_size, attn_size])
-    attention_states = tf.reshape(attention_states, [batch_size*attn_length, attn_size])
-    attention_states = tf.matmul(attention_states, attnw1)
-    attention_states = tf.reshape(attention_states, [batch_size, attn_length, attn_size])
+    attnw = tf.get_variable("AttnW1", [1, attn_size, attn_size])
     attnw2 = tf.get_variable("AttnW2", [attn_size, attn_size])
+    attention_states = tf.nn.conv1d(attention_states, attnw, 1, 'SAME')
     attnv = tf.get_variable("AttnV", [attn_size])
+  sys.stdout = sys.stderr
 
-  def attention_weight(decoder_output):
-    #decoder_output = _linear(output, attn_size, True)
-    decoder_output = tf.matmul(decoder_output, attnw2)
-    decoder_output = tf.reshape(decoder_output, [-1, 1, attn_size])
-
+  def attention_weight(output):
+    #y = _linear(output, attn_size, True)
+    y = tf.matmul(output, attnw2)
+    y = tf.reshape(y, [-1, 1, attn_size])
     # Calculate attention weights for every encoder's input by taking an inner product between the weight bector (attnv), and the conbined decoder's state with the encoder's output.
-    attention_vectors = attnv * tf.tanh(decoder_output + attention_states) # [batch_size, max_input_length, attn_size]
-    attention_vectors = tf.nn.softmax(tf.reduce_sum(attention_vectors, axis=2)) # [batch_size, max_input_length]
+    attention_vectors = tf.nn.softmax(tf.reduce_sum(attnv * tf.tanh(y + attention_states), axis=2))
     return attention_vectors
 
   states = [initial_state]
@@ -81,7 +80,7 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
         if i > 0:
           tf.get_variable_scope().reuse_variables()
         pointed_idx = d
-        # in testing, inputs to the decoder won't be used except the first one.
+        # in testing, inputs to decoder won't be used except the first one.
         if feed_prev and i > 0:
           # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
           pointed_idx = tf.argmax(output, axis=1, output_type=tf.int32)
@@ -93,12 +92,13 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
         output, state = cell(inp, states[-1])
         with tf.name_scope('attention_weight'):
           output = attention_weight(output)
+        #print 'output', output
         states.append(state)
         outputs.append(output)
   with tf.name_scope('outputs'):
     outputs = tf.stack(outputs, axis=1)
   with tf.name_scope('states'):
     states = tf.stack(states, axis=1)
-  with tf.name_scope('pointed_idxs'):
+  with tf.name_scope('pointed_idx'):
     pointed_idxs = tf.stack(pointed_idxs, axis=1)
   return outputs, states, pointed_idxs
