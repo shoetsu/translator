@@ -18,8 +18,8 @@ python scripts/setup_nltk.py
 
 ```bash
 cd dataset/embeddings
-curl -O https://lil.cs.washington.edu/coref/turian.50d.txt
 curl -O https://nlp.stanford.edu/data/glove.840B.300d.zip
+unzip glove.840B.300d.zip
 ```
 
 
@@ -69,7 +69,7 @@ For convinience, several arguments listed in **run.sh** can be dynamically speci
 ### Structure of model directory
 ```
 ├── checkpoints     # The directory to put the actual checkpoints (parameters) in.
-├── config          # Config file of this model. 
+├── config          # Config file of the model. 
 ├── summaries       # The directory to put the eventfiles of Tensorboard in.
 ├── tests           # The directory to put the result of testing in.
 ├── *.log           # Logging files of each mode.

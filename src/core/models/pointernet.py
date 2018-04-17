@@ -45,8 +45,7 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
 
 
 class PointerNetwork(ModelBase):
-  def __init__(self, sess, config, vocab,
-               w_embeddings=None, pos_embeddings=None, wtype_embeddings=None):
+  def __init__(self, sess, config, vocab):
     ModelBase.__init__(self, sess, config)
     self.vocab = vocab
     self.use_pos = 'pos' in config.features
@@ -73,20 +72,19 @@ class PointerNetwork(ModelBase):
     with tf.variable_scope('Embeddings') as scope:
       e_inputs_emb = []
 
-      if w_embeddings is None:
-        w_embeddings = self.initialize_embeddings(
-          'Word', vocab.word.embeddings.shape, 
-          initializer=tf.constant_initializer(vocab.word.embeddings),
-          trainable=config.train_embedding)
+      w_embeddings = self.initialize_embeddings(
+        'Word', vocab.word.embeddings.shape, 
+        initializer=tf.constant_initializer(vocab.word.embeddings),
+        trainable=config.train_embedding)
 
       e_inputs_emb.append(tf.nn.embedding_lookup(w_embeddings, self.e_inputs_ph))
 
-      if self.use_pos and pos_embeddings is None:
+      if self.use_pos:
         pos_embeddings = self.initialize_embeddings(
           'POS', [vocab.pos.size, config.feature_size], 
           trainable=True)
         e_inputs_emb.append(tf.nn.embedding_lookup(pos_embeddings, self.pos_inputs_ph))
-      if self.use_wtype and wtype_embeddings is None:
+      if self.use_wtype:
         wtype_embeddings = self.initialize_embeddings(
           'Wtype', [vocab.wtype.size, config.feature_size], 
           trainable=True)
@@ -196,41 +194,29 @@ class IndependentPointerNetwork(PointerNetwork):
     self.models = models = []
     self.vocab = vocab
 
-    with tf.variable_scope('Embeddings') as scope:
-      self.use_pos = 'pos' in config.features
-      self.use_wtype = 'wtype' in config.features
-      w_embeddings = self.initialize_embeddings(
-        'Word', vocab.word.embeddings.shape, 
-        initializer=tf.constant_initializer(vocab.word.embeddings),
-        trainable=config.train_embedding)
-
-      pos_embeddings = self.initialize_embeddings(
-        'POS', [vocab.pos.size, config.feature_size], 
-        trainable=True) if self.use_pos else None
-      wtype_embeddings = self.initialize_embeddings(
-        'Wtype', [vocab.wtype.size, config.feature_size], 
-        trainable=True) if self.use_wtype else None
+    self.use_pos = 'pos' in config.features
+    self.use_wtype = 'wtype' in config.features
 
     target_columns = config.target_columns
     for col in target_columns:
       with tf.variable_scope(col):
         config.target_columns = [col]
-        model = PointerNetwork(sess, config, vocab, 
-                               w_embeddings=w_embeddings,
-                               pos_embeddings=pos_embeddings,
-                               wtype_embeddings=wtype_embeddings)
+        model = PointerNetwork(sess, config, vocab)
         self.models.append(model)
     config.target_columns = target_columns
 
+    # Accumulated placeholders
     self.e_inputs_ph = [m.e_inputs_ph for m in models]
     self.pos_inputs_ph = [m.pos_inputs_ph for m in models]
     self.wtype_inputs_ph = [m.wtype_inputs_ph for m in models]
     self.d_outputs_ph = [m.d_outputs_ph[0] for m in models]
-    self.copied_inputs = [m.copied_inputs[0] for m in models]
     self.is_training = [m.is_training for m in models]
+
+    self.copied_inputs = [m.copied_inputs[0] for m in models]
     self.greedy_predictions = [m.greedy_predictions[0] for m in models]
-    self.loss = tf.reduce_mean([m.loss for m in models])
-    self.updates = [self.get_updates(m.loss) for m in models]
+    self.loss = tf.reduce_mean([m.loss for m in models], name='loss')
+    #self.updates = [self.get_updates(m.loss) for m in models]
+    self.updates = self.get_updates(self.loss)
 
   def get_input_feed(self, batch, is_training):
     feed_dict = {}

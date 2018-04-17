@@ -25,8 +25,6 @@ def merge_state(state, rnn_size, activation=tf.nn.tanh):
     raise ValueError
   if isinstance(state[0], LSTMStateTuple):
     raise NotImplementedError
-  print 'state', state
-  print 'rnn_size', rnn_size
   if type(state[0]) == tuple: # num_layers >= 2
     new_state = []
     for fs, bs in zip(*state):
@@ -35,7 +33,6 @@ def merge_state(state, rnn_size, activation=tf.nn.tanh):
         ns = linear(ns, rnn_size, activation=activation)
       new_state.append(ns)
     new_state = tuple(new_state)
-    print 'new_state', new_state
   else:
     new_state = tf.concat(state, 1)
     new_state = linear(new_state, rnn_size, activation=activation)

@@ -144,7 +144,7 @@ class PredefinedVocabWithEmbeddingBase(object):
     rev_vocab = OrderedSet(self.start_vocab + list(rev_vocab))
 
     if vocab_size:
-      rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size])
+      rev_vocab = OrderedSet([w for i, w in enumerate(rev_vocab) if i < vocab_size + len(self.start_vocab)])
     vocab = collections.OrderedDict()
     for i,t in enumerate(rev_vocab):
       vocab[t] = i
@@ -167,7 +167,7 @@ class PredefinedVocabWithEmbeddingBase(object):
       for i, line in enumerate(f.readlines()):
         if skip_first and i == 0:
           continue
-        if vocab_size and len(word_and_emb) > vocab_size:
+        if vocab_size and len(word_and_emb) >= vocab_size:
           break
         #################
         word_and_embedding = line.split()
@@ -185,7 +185,6 @@ class PredefinedVocabWithEmbeddingBase(object):
                                                size=embedding_size))
     zero_vector = [0.0 for _ in xrange(embedding_size)]
 
-
     # Initialize [_NUM, _UNIT] by random vectors, [_PAD, _BOS, _EOS, _UNK] by zero_vectors.
     for k in self.start_vocab:
       embedding_dict[k] = embedding_dict[k]
@@ -195,7 +194,6 @@ class PredefinedVocabWithEmbeddingBase(object):
 
     for k, v in word_and_emb.items():
       embedding_dict[k] = v
-
     sys.stderr.write("Done loading word embeddings.\n")
     return embedding_dict
 

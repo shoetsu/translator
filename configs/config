@@ -23,22 +23,16 @@ train_embedding=true    # Whether to train the initial embeddings or not.
 teacher_forcing=false   # Whether to force the model to input the gold target labels in training regardless of the model's choice.
 share_decoder=false
 batch_size=100           # Batch size.
-embedding_initialization=random # [random, zero]
 
 # Structure.
 cell_type = GRUCell                   # The type of RNNCell. []
 num_layers=1                          # The number of layers in MultiRNNCell.
-rnn_size=300                          # The dimension of RNN, and other layers.
-model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
+rnn_size=50                          # The dimension of RNN, and other layers.
+model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
 #model_type=PointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
 
-#dataset_type=NumNormalizedPriceDataset
-#dataset_type=CurrencyNormalizedPriceDataset
-#dataset_type=PriceDataset
-#dataset_type=AllNormalizedPriceDataset
-dataset_type=PriceDataset
-#dataset_type=PriceDatasetWithFeatures
-features=[] # Additional features besides words. Acceptable feature types: [pos,wtype ]
+dataset_type=PriceDataset # [PriceDataset, PriceDatasetWithFeatures, AllNormalizedPriceDataset]
+features=[] # Additional features besides words. This should be specified only when we use PriceDatasetWithFeatures. (Acceptable feature types: [pos,wtype])
 feature_size=20
 
 dataset_path { # The train/valid/test dataset.
