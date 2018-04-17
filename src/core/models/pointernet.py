@@ -135,7 +135,7 @@ class PointerNetwork(ModelBase):
         with tf.name_scope('add_eos'):
           targets = tf.concat([d_outputs_ph, tf.zeros([batch_size, 1], dtype=tf.int32)], axis=1)
 
-        # the length of outputs should be also added by 1 because of EOS. 
+        # the length of outputs should be also added by 1 to predict also EOS. 
         with tf.name_scope('output_weights'):
           d_outputs_weights = tf.sequence_mask(
             d_outputs_length+1, maxlen=shape(d_outputs_ph, 1)+1, dtype=tf.float32)

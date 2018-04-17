@@ -63,7 +63,7 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
     attnv = tf.get_variable("AttnV", [attn_size])
 
   def attention_weight(decoder_output):
-    #y = _linear(output, attn_size, True)
+    #decoder_output = _linear(output, attn_size, True)
     decoder_output = tf.matmul(decoder_output, attnw2)
     decoder_output = tf.reshape(decoder_output, [-1, 1, attn_size])
 
