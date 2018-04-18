@@ -1,41 +1,39 @@
 # This config file is assumed to be parsed pyhocon.
 
 # Data processing.
-input_max_len = 30      # The maximum length of the input sentence in training.
+input_max_len = 30      # The maximum length of the input sentence in training. If an example in training dataset exceeds this, it is ignored.
 output_max_len = 5      # The maximum length of the output label.
 vocab_size = 20000          # The maximum size of the vocabulary. if 0, use all.
 lowercase=true          # Whether to convert words into lowercase or not.
 normalize_digits=true  # Whether to convert all the arabic numbers into 0. If you are going to employ NumNormalizedDataset or AllNormalizedDataset, it's not necessary.
-target_attribute=Price       # The targetted attribute. It is mainly used to decide the words to be normalizd.
+target_attribute=Price       # The targetted attribute. It is mainly used to decide which words to be normalized.
 target_columns=[LB,UB,Unit,Rate] # The columns to be used. They all must be in the name of columns in the dataset.
 
 
 # Training hyperparameters.
 num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
 max_to_keep = 1         # The number of checkpoints kept.
-max_epoch = 20          # The number of epochs in training.
+max_epoch = 20          # The number of maximum epochs in training.
 learning_rate = 0.001   # Learning rate.
-max_gradient_norm = 5.0 # 
-decay_rate = 0.999      #
-decay_frequency = 100   #
-dropout_rate=0.2        # The dropout ratio in training. 
+max_gradient_norm = 5.0 # Maximum norm of gradients for gradient clipping.
+decay_rate = 0.999      # The rate of how much the model decreases its learning_rate.
+decay_frequency = 100   # The frequency of per how many steps the model decreases its learning_rate.
+dropout_rate=0.2        # Dropout ratio in training. 
 train_embedding=true    # Whether to train the initial embeddings or not.
 teacher_forcing=false   # Whether to force the model to input the gold target labels in training regardless of the model's choice.
 share_decoder=false
 batch_size=100           # Batch size.
 
 # Structure.
-cell_type = GRUCell                   # The type of RNNCell. []
-num_layers=1                          # The number of layers in MultiRNNCell.
-rnn_size=50                          # The dimension of RNN, and other layers.
+cell_type = GRUCell         # The type of RNNCell. 
+num_layers=1                # The number of layers in MultiRNNCell.
+rnn_size=50                 # The dimension of RNN, and other layers.
 model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
-#model_type=PointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'.
-
 dataset_type=PriceDataset # [PriceDataset, PriceDatasetWithFeatures, AllNormalizedPriceDataset]
-features=[] # Additional features besides words. This should be specified only when we use PriceDatasetWithFeatures. (Acceptable feature types: [pos,wtype])
-feature_size=20
+features=[]      # Additional features besides words. This should be specified only when we use PriceDatasetWithFeatures. (Acceptable feature types: [pos,wtype])
+feature_size=20  # The dimension of additional feature embeddings (POS, wtype, etc.). They are concatenated with the word embeddings of each input word.
 
-dataset_path { # The train/valid/test dataset.
+dataset_path { # The pathes to train/valid/test dataset.
   test = dataset/test.price.csv
   valid = dataset/valid.price.csv
   #train = dataset/train.price.csv
