@@ -11,6 +11,12 @@ import datasets as self_module
 
 EMPTY = '-' # token for empty label.
 
+
+def remove_special_tokens(tokens):
+  special_tokens = [_BOS, _PAD]
+  return [x for x in tokens if x not in special_tokens]
+
+
 def postprocess(tokens):
   """
   Args:
@@ -19,10 +25,6 @@ def postprocess(tokens):
   # Postprocessing for normalizing numbers. (e.g. 40|million -> 40 Million)
   def separate_concatenated_tokens(tokens): 
     return common.flatten([x.split('|') for x in tokens])
-
-  def remove_special_tokens(tokens):
-    special_tokens = [_BOS, _PAD]
-    return [x for x in tokens if x not in special_tokens]
 
   tokens = separate_concatenated_tokens(tokens)
   tokens = remove_special_tokens(tokens)
@@ -34,13 +36,13 @@ def find_token_from_sentence(p_idxs, s_tokens):
    p_idxs: List of indices. (e.g. [[3,4], [3,4], [2], []])
    s_tokens: List of string. (e.g. ['it', 'costs', '$', '4', 'millions', '.'])
   '''
-  sys.stdout = sys.stderr
   preds = []
   for pp in p_idxs:
     pred =  [s_tokens[k] for k in pp if len(s_tokens) > k]
-    pred = ' '.join([x for x in pred if x not in [_BOS, _PAD]])
+    #pred = ' '.join(remove_special_tokens(pred))
+    pred = remove_special_tokens(pred)
     if not pred:
-      pred = EMPTY
+      pred = [EMPTY]
     preds.append(pred)
   return preds
 
@@ -109,7 +111,6 @@ class _PriceDataset(DatasetBase):
     self.original_sources = [[_BOS] + self.vocab.word.tokenizer(l, normalize_digits=False) for l in text_data]
     self.indices = data['index'].values
     self.sources = [[_BOS] + self.vocab.word.tokenizer(l) for l in text_data]
-
     self.all_columns = [x for x in data.columns if x not in ['index', 'sentence']]
     if not self.target_columns:
       self.target_columns = self.all_columns
@@ -330,7 +331,7 @@ class _PriceDataset(DatasetBase):
         k = "%s/%s" % (type_name, col_name)
         summary_dict[k] = val
     scalar_summary = tf_utils.make_summary(summary_dict)
-    
+
     # header = ['sentence', 'human', 'prediction']
     # text_summary = [tf.summary.text(h, tf.convert_to_tensor(df_row_all[h].tolist())) for h in header]
     # text_summary = tf.summary.merge(text_summary)
@@ -405,6 +406,7 @@ class _NumNormalizedPriceDataset(_PriceDataset):
 
   def load_data(self):
     _PriceDataset.load_data(self)
+    
     self.pos = self.get_pos(self.original_sources, self.path)
     self.original_sources, self.targets, self.num_indices = self.concat_numbers(
       self.original_sources, self.targets, self.pos 
@@ -428,13 +430,19 @@ class _NumNormalizedPriceDataset(_PriceDataset):
     sources = []
     targets = []
     num_indices = []
-    for s, t, p in zip(_sources, _targets, _pos):
+    #print len(_sources), len(_targets), len(_pos)
+    try:
+      assert len(_sources) == len(_pos)
+    except:
+      raise Exception('The number of the sources and their POS must be same. (%d != %d)' % (len(_sources), len(_pos)))
+    for i, (s, t, p) in enumerate(zip(_sources, _targets, _pos)):
       try:
         assert len(s) == len(p)
       except:
+        print ('line-idx: %d' % i)
         sys.stderr.write('Source:' + ' '.join(s) + '\n')
         sys.stderr.write('POS:' + ' '.join(p) + '\n')
-        raise Exception('The sources and their POS must be same. (%d != %d)' % (len(s), len(p)))
+        raise Exception('The length of a source sentence and its POS must be same. (%d != %d)' % (len(s), len(p)))
       new_s = []
       tmp = []
       idx = []
@@ -466,7 +474,7 @@ def unit_normalize(s, target_attribute):
     unit_names += [x+'s' for x in unit_names]
     unit_symbols = ['$', '₡', '£', '¥','₦', '₩', '₫', '₪', '₭', '€', '₮', '₱', '₲', '₴', '₹', '₸', '₺', '₽', '฿',]
   elif target_attribute.lower() == 'weight':
-    unit_names = ['kg', 'g', 'gram', 'grams', 'pounds', 'tons', 'ounce', 'lb', 'lbs', 'gallon', 'gallons']
+    unit_names = ['kg', 'g', 'gram', 'grams', 'pound', 'pounds', 'tons', 'ounce', 'lb', 'lbs', 'gallon', 'gallons']
     unit_symbols = []
   else:
     raise ValueError('\'args.target_attribute\' must be in the list [\'Price\', \'Weight\']. (It is \'%s\' now.)' % target_attribute)
@@ -496,7 +504,7 @@ class _AllNormalizedPriceDataset(_NumNormalizedPriceDataset):
   def manual_replace(self, s, idx):
     s = _NumNormalizedPriceDataset.manual_replace(self, s, idx)
     s = unit_normalize(s, self.target_attribute)
-    s = attribute_normalize(s, self.target_attribute)
+    #s = attribute_normalize(s, self.target_attribute)
     return s
 
 

@@ -68,7 +68,10 @@ class WordTokenizer(object):
       # special tokens are not transformed to lowercase.
       for t in START_VOCAB:
         sent.replace(t.lower(), t) 
-    return word_tokenize(sent)
+    sent = sent.decode('utf-8')
+    res = word_tokenize(sent)
+    res = [x.encode('utf-8') for x in res]
+    return res
 
 class VocabularyBase(object):
   def __init__(self):
@@ -103,7 +106,7 @@ class WordVocabularyBase(VocabularyBase):
     def _ids2tokens(ids, link_span):
       sent_tokens = [self.id2token(word_id) for word_id in ids]
       if link_span:
-        for i in xrange(link_span[0], link_span[1]+1):
+        for i in range(link_span[0], link_span[1]+1):
           sent_tokens[i] = common.colored(sent_tokens[i], 'link')
       if remove_special:
         sent_tokens = [w for w in sent_tokens 
@@ -183,7 +186,7 @@ class PredefinedVocabWithEmbeddingBase(object):
     embedding_dict = common.OrderedDefaultDict(
       default_factory=lambda:np.random.uniform(-math.sqrt(3), math.sqrt(3),
                                                size=embedding_size))
-    zero_vector = [0.0 for _ in xrange(embedding_size)]
+    zero_vector = [0.0 for _ in range(embedding_size)]
 
     # Initialize [_NUM, _UNIT] by random vectors, [_PAD, _BOS, _EOS, _UNK] by zero_vectors.
     for k in self.start_vocab:

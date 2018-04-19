@@ -28,20 +28,25 @@ batch_size=100           # Batch size.
 cell_type = GRUCell         # The type of RNNCell. 
 num_layers=1                # The number of layers in MultiRNNCell.
 rnn_size=50                 # The dimension of RNN, and other layers.
-model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
-dataset_type=PriceDataset # [PriceDataset, PriceDatasetWithFeatures, AllNormalizedPriceDataset]
+model_type=HybridPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
+dataset_type=AllNormalizedPriceDataset # [PriceDataset, PriceDatasetWithFeatures, AllNormalizedPriceDataset]
+#encoder_type=BidirectionalRNNEncoder
+encoder_type=BidirectionalRNNEncoder
+
 features=[]      # Additional features besides words. This should be specified only when we use PriceDatasetWithFeatures. (Acceptable feature types: [pos,wtype])
 feature_size=20  # The dimension of additional feature embeddings (POS, wtype, etc.). They are concatenated with the word embeddings of each input word.
 
 dataset_path { # The pathes to train/valid/test dataset.
   test = dataset/test.price.csv
-  valid = dataset/valid.price.csv
+  #valid = dataset/valid.price.csv
   #train = dataset/train.price.csv
+  valid = dataset/valid.price.csv
   train = dataset/train.price.rate.csv
+  #train = dataset/train.price.rate.csv
 }
 #Pretrained embeddings.
 embedding_path=dataset/embeddings   # The directory where to put your pretrained embeddings file.
-embeddings=[${glove_300d_filtered}] 
+embeddings=[${glove_300d_filtered}]
 glove_300d_filtered {
   path = ${embedding_path}/glove.840B.300d.txt
   size = 300

@@ -48,6 +48,7 @@ class Manager(object):
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
+      self.dataset.train.load_data()
 
   def load_config(self, args):
     '''
@@ -102,7 +103,7 @@ class Manager(object):
     default_config.update(config)
     config = default_config
 
-    print config
+    print (config)
     return config
 
   def save_model(self, model, save_as_best=False):
@@ -324,7 +325,6 @@ def main(args):
     manager = Manager(args, sess)
     if args.mode == 'train':
       manager.train()
-      manager.test()
     elif args.mode == 'test':
       manager.test()
     elif args.mode == 'demo':
@@ -334,12 +334,12 @@ def main(args):
     else:
       raise ValueError('args.mode must be \'train\', \'test\', or \'demo\'.')
 
-  # if args.mode == 'train':
-  #   with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
-  #     tf.set_random_seed(0)
-  #     manager = Manager(args, sess, vocab=vocab)
-  #     manager.test()
-  # return manager
+  if args.mode == 'train':
+    with tf.Graph().as_default(), tf.Session(config=tf_config).as_default() as sess:
+      tf.set_random_seed(0)
+      manager = Manager(args, sess)
+      manager.test()
+  return manager
 
 if __name__ == "__main__":
   desc = ''

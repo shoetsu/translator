@@ -6,7 +6,8 @@ from pprint import pprint
 import tensorflow as tf
 from utils.tf_utils import shape
 from core.models import ModelBase, setup_cell
-from core.models.encoder import SentenceEncoder #WordEncoder, 
+from core.models import encoder as encoder_class
+#from core.models.encoder import SentenceEncoder #WordEncoder, 
 from core.extensions.pointer import pointer_decoder 
 from core.vocabularies import BOS_ID
 
@@ -44,17 +45,25 @@ def setup_decoder(d_outputs_ph, e_inputs_emb, e_state,
   return d_outputs, predictions, copied_inputs
 
 
-class PointerNetwork(ModelBase):
-  def __init__(self, sess, config, vocab):
+class PointerNetworkBase(ModelBase):
+  def __init__(self, sess, config, vocab, is_training=None):
     ModelBase.__init__(self, sess, config)
     self.vocab = vocab
     self.use_pos = 'pos' in config.features
     self.use_wtype = 'wtype' in config.features
+    self.target_columns = config.target_columns
 
-    input_max_len, output_max_len = None, config.output_max_len
-    self.is_training = tf.placeholder(tf.bool, [], name='is_training')
+    self.is_training = tf.placeholder(tf.bool, [], name='is_training') if is_training is None else is_training
     with tf.name_scope('keep_prob'):
       self.keep_prob = 1.0 - tf.to_float(self.is_training) * config.dropout_rate
+
+class PointerNetwork(PointerNetworkBase):
+  def __init__(self, sess, config, vocab, 
+               encoder=None, is_training=None):
+    PointerNetworkBase.__init__(self, sess, config, vocab, 
+                                is_training=is_training)
+
+    input_max_len, output_max_len = None, config.output_max_len
 
     # <Sample input>
     # e_inputs: [1, 40, 44, 0, 0], d_outputs: [2, 0, 0] (target=44)
@@ -94,8 +103,14 @@ class PointerNetwork(ModelBase):
       e_inputs_emb = tf.nn.dropout(e_inputs_emb, self.keep_prob)
 
     with tf.variable_scope('SentEncoder') as scope:
-      sent_encoder = SentenceEncoder(config, self.keep_prob, 
-                                     shared_scope=scope)
+      # If an encoder is not given, prepare a new one.
+      if encoder is None:
+        encoder_type = getattr(encoder_class, config.encoder_type)
+        sent_encoder = encoder_type(config, self.keep_prob, 
+                                    shared_scope=scope)
+      else:
+        sent_encoder = encoder
+
       e_inputs_length = tf.count_nonzero(self.e_inputs_ph, axis=1)
       e_outputs, e_state = sent_encoder.encode(
         e_inputs_emb, e_inputs_length)
@@ -105,7 +120,7 @@ class PointerNetwork(ModelBase):
     self.losses = []
     self.greedy_predictions = []
     self.copied_inputs = []
-    for i, col_name in enumerate(config.target_columns):
+    for i, col_name in enumerate(self.target_columns):
       with tf.name_scope('DecoderOutput%d' % i):
         d_outputs_ph = tf.placeholder(
           tf.int32, [None, output_max_len], name="DecoderOutput")
@@ -190,40 +205,34 @@ class PointerNetwork(ModelBase):
 
 class IndependentPointerNetwork(PointerNetwork):
   def __init__(self, sess, config, vocab):
-    ModelBase.__init__(self, sess, config)
-    self.models = models = []
-    self.vocab = vocab
-
-    self.use_pos = 'pos' in config.features
-    self.use_wtype = 'wtype' in config.features
-
-    target_columns = config.target_columns
-    for col in target_columns:
+    PointerNetworkBase.__init__(self, sess, config, vocab)
+    self.models = []
+    for col in self.target_columns:
       with tf.variable_scope(col):
         config.target_columns = [col]
-        model = PointerNetwork(sess, config, vocab)
+        model = PointerNetwork(sess, config, vocab, 
+                               is_training=self.is_training)
         self.models.append(model)
-    config.target_columns = target_columns
+    config.target_columns = self.target_columns
+    self.accumulate_models(self.models)
 
+  def accumulate_models(self, models):
     # Accumulated placeholders
     self.e_inputs_ph = [m.e_inputs_ph for m in models]
     self.pos_inputs_ph = [m.pos_inputs_ph for m in models]
     self.wtype_inputs_ph = [m.wtype_inputs_ph for m in models]
     self.d_outputs_ph = [m.d_outputs_ph[0] for m in models]
-    self.is_training = [m.is_training for m in models]
 
     self.copied_inputs = [m.copied_inputs[0] for m in models]
     self.greedy_predictions = [m.greedy_predictions[0] for m in models]
     self.loss = tf.reduce_mean([m.loss for m in models], name='loss')
-    #self.updates = [self.get_updates(m.loss) for m in models]
     self.updates = self.get_updates(self.loss)
 
   def get_input_feed(self, batch, is_training):
     feed_dict = {}
     for k in self.e_inputs_ph:
       feed_dict[k] = batch.sources
-    for k in self.is_training:
-      feed_dict[k] = is_training
+    feed_dict[self.is_training] = is_training
 
     if self.use_pos:
       for k in self.pos_inputs_ph:
@@ -235,3 +244,33 @@ class IndependentPointerNetwork(PointerNetwork):
     for d_outputs_ph, target in zip(self.d_outputs_ph, batch.targets):
       feed_dict[d_outputs_ph] = target
     return feed_dict
+
+class HybridPointerNetwork(IndependentPointerNetwork):
+  def __init__(self, sess, config, vocab):
+    PointerNetworkBase.__init__(self, sess, config, vocab)
+    self.models = []
+    with tf.variable_scope('SharedEncoder') as shared_scope:
+      encoder_type = getattr(encoder_class, config.encoder_type)
+      shared_encoder = encoder_type(config, self.keep_prob, 
+                                    shared_scope=shared_scope)
+
+    with tf.variable_scope('MultiEncoderWrapper') as multi_encoder_scope:
+      pass
+    
+    for col in self.target_columns:
+      with tf.variable_scope(col):
+        config.target_columns = [col]
+        with tf.variable_scope('SentEncoder') as scope:
+          encoder_type = getattr(encoder_class, config.encoder_type)
+          independent_encoder = encoder_type(config, self.keep_prob, 
+                                             shared_scope=scope)
+        hybrid_encoder = encoder_class.MultiEncoderWrapper(
+          [shared_encoder, independent_encoder], config.rnn_size,
+          shared_scope=multi_encoder_scope)
+
+        model = PointerNetwork(sess, config, vocab, 
+                               encoder=hybrid_encoder,
+                               is_training=self.is_training)
+        self.models.append(model)
+    config.target_columns = self.target_columns
+    self.accumulate_models(self.models)

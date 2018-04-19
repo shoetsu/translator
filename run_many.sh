@@ -5,7 +5,7 @@ root_path=$1
 opt=""
 
 #model_types=(0.baseline 1.balanced 4.normalize 5.normalize.balanced)
-model_types=(0_unit selective_selective zero_zero all_all)
+model_types=(independent.price.normalized independent.weight.normalized shared.price.normalized shared.weight.normalized hybrid.price.normalized hybrid.weight.normalized)
 for mt in ${model_types[@]}; do
     echo "    nohup ./run.sh $root_path/$mt train &"
     nohup ./run.sh $root_path/$mt train $opt &
