@@ -33,7 +33,8 @@ def postprocess(tokens):
 def find_token_from_sentence(p_idxs, s_tokens):
   '''
   Args:
-   p_idxs: List of indices. (e.g. [[3,4], [3,4], [2], []])
+   p_idxs: List of indices. Each of the indice-list shows each column.
+           (e.g. [[3,4], [3,4], [2], []])
    s_tokens: List of string. (e.g. ['it', 'costs', '$', '4', 'millions', '.'])
   '''
   preds = []

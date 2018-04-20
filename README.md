@@ -53,7 +53,7 @@ For convinience, several arguments listed in **run.sh** can be dynamically speci
  ./run.sh checkpoints/tmp train configs/config --batch_size=100 --test_data_path=dataset/test.csv
 ```
 
-### Structure of root directory
+### Structure of our codes
 ```
 ├── checkpoints      # The directory to restore your trained models.
 ├── configs          # The directory to put your initial config files in.

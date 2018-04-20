@@ -69,7 +69,7 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
     output_probabilities[i] = V・tanh(W1・attention_state[i] + W2・decoder's output[t])
      - i: the index of an input word
      - t: current time-step in decoding
-     - v: a tensor with the shape [attention_size]
+     - V: a tensor with the shape [attention_size]
      - W1: a tensor with the shape [attention_size, encoder's rnn_size]
      - W2: a tensor with the shape [attention_size, decoder's rnn_size]
     """
