@@ -9,11 +9,10 @@ normalize_digits=true  # Whether to convert all the arabic numbers into 0. If yo
 target_attribute=Price       # The targetted attribute. It is mainly used to decide which words to be normalized.
 target_columns=[LB,UB,Unit,Rate] # The columns to be used. They all must be in the name of columns in the dataset.
 
-
 # Training hyperparameters.
 num_train_data=0        # The maximum size of training data. if 0, all of the training data will be used.
-max_to_keep = 1         # The number of checkpoints kept.
-max_epoch = 20          # The number of maximum epochs in training.
+max_to_keep=1         # The number of checkpoints kept.
+max_epoch=20          # The number of maximum epochs in training.
 learning_rate = 0.001   # Learning rate.
 max_gradient_norm = 5.0 # Maximum norm of gradients for gradient clipping.
 decay_rate = 0.999      # The rate of how much the model decreases its learning_rate.
@@ -26,9 +25,9 @@ batch_size=100           # Batch size.
 
 # Structure.
 cell_type = GRUCell         # The type of RNNCell. 
-num_layers=1                # The number of layers in MultiRNNCell.
+num_layers=2                # The number of layers in MultiRNNCell.
 rnn_size=50                 # The dimension of RNN, and other layers.
-model_type=HybridPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
+model_type=IndependentPointerNetwork  # The name of class defined in 'src/core/models/pointernet.py'. [PointerNetwork, IndependentPointerNetwork]
 dataset_type=AllNormalizedPriceDataset # [PriceDataset, PriceDatasetWithFeatures, AllNormalizedPriceDataset]
 #encoder_type=BidirectionalRNNEncoder
 encoder_type=BidirectionalRNNEncoder
@@ -41,13 +40,13 @@ dataset_path { # The pathes to train/valid/test dataset.
   #valid = dataset/valid.price.csv
   #train = dataset/train.price.csv
   valid = dataset/valid.price.csv
-  train = dataset/train.price.rate.csv
+  train = dataset/train.price.csv
   #train = dataset/train.price.rate.csv
 }
 #Pretrained embeddings.
 embedding_path=dataset/embeddings   # The directory where to put your pretrained embeddings file.
-embeddings=[${glove_300d_filtered}]
-glove_300d_filtered {
+embeddings=[${glove_300d}]
+glove_300d{
   path = ${embedding_path}/glove.840B.300d.txt
   size = 300
   skip_first = false

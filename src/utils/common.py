@@ -67,8 +67,8 @@ def get_pos(sents, output_path=None):
     if output_path is not None:
       sys.stderr.write("Restoring to \'%s\' ...  \n" % output_path)
       os.system('cp %s %s' % (tmp_filepath + suffix, output_path))
-    #os.system('rm %s' % (tmp_filepath))
-    #os.system('rm %s%s' % (tmp_filepath, suffix))
+    os.system('rm %s' % (tmp_filepath))
+    os.system('rm %s%s' % (tmp_filepath, suffix))
     
   try:
     assert len(pos_tags) == len(sents)

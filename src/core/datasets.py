@@ -80,9 +80,9 @@ class DatasetBase(object):
 
 class _PriceDataset(DatasetBase):
   def __init__(self, data_path, vocab, target_attribute, target_columns, 
-               num_lines=0):
+               num_lines=None):
     self.path = data_path
-    self.num_lines = num_lines 
+    self.num_lines = num_lines if num_lines else None
     self.target_attribute = target_attribute
     self.target_columns = target_columns
     self.vocab = vocab
@@ -93,19 +93,16 @@ class _PriceDataset(DatasetBase):
     self.targets = []
     self.all_columns = []
 
-  def get_pos(self, texts, path=None):
-    pos = common.get_pos(texts, output_path=path)
+  def get_pos(self, texts, output_path=None):
+    pos = common.get_pos(texts, output_path=output_path)
     pos = [[_BOS] + p[1:] for p in pos] # The POS of _BOS should be _BOS.
     return pos
 
   def load_data(self):
     # lazy loading to save time.
     sys.stderr.write('Loading dataset from %s ...\n' % (self.path))
-    data = pd.read_csv(self.path).fillna(EMPTY)
+    data = pd.read_csv(self.path, nrows=self.num_lines).fillna(EMPTY)
 
-    if self.num_lines:
-      data = data[:self.num_lines]
-  
     text_data = data['sentence']
     # For copying, keep unnormalized sentences too.
     self.original_sources = [[_BOS] + self.vocab.word.tokenizer(l, normalize_digits=False) for l in text_data]
@@ -401,13 +398,10 @@ class _PriceDataset(DatasetBase):
     return df_sum, df_row
 
 class _NumNormalizedPriceDataset(_PriceDataset):
-  # def __init__(self, path, vocab, target_columns, num_lines=0):
-  #   _PriceDataset.__init__(self, path, vocab, num_lines, target_columns)
 
   def load_data(self):
     _PriceDataset.load_data(self)
-    
-    self.pos = self.get_pos(self.original_sources, self.path)
+    self.pos = self.get_pos(self.original_sources, output_path=self.path)
     self.original_sources, self.targets, self.num_indices = self.concat_numbers(
       self.original_sources, self.targets, self.pos 
     )
@@ -516,7 +510,7 @@ class _PriceDatasetWithFeatures(_PriceDataset):
                            target_columns, num_lines=num_lines)
   def load_data(self):
     super(_PriceDatasetWithFeatures, self).load_data()
-    self.pos = self.get_pos(self.original_sources, self.path)
+    self.pos = self.get_pos(self.original_sources, output_path=self.path)
 
   def get_batch_data(self, input_max_len, output_max_len):
     # TODO:

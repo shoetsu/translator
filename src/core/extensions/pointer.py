@@ -48,27 +48,35 @@ from utils.tf_utils import shape, _linear
 def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state, 
                     attention_states, cell,
                     feed_prev=True, dtype=dtypes.float32, scope=None):
-  #print 'encoder_inputs',encoder_inputs_emb
-  #print 'decoder_inputs', decoder_inputs
-  #print 'attention_states', attention_states
   encoder_inputs = encoder_inputs_emb
-  #attn_length = attention_states.get_shape()[1].value
-  #attn_size = attention_states.get_shape()[2].value
   attn_length = shape(attention_states, 1)
   attn_size = shape(attention_states, 2)
+
   with tf.name_scope('attention_setup'):
+    # Prepare the weights for attention calculation. We assume here the sizes of attention_states (encoder's outputs), encoder's state, decoder's output are same.
     attnw = tf.get_variable("AttnW1", [1, attn_size, attn_size])
     attnw2 = tf.get_variable("AttnW2", [attn_size, attn_size])
-    attention_states = tf.nn.conv1d(attention_states, attnw, 1, 'SAME')
     attnv = tf.get_variable("AttnV", [attn_size])
+
+    # Calculate W1 * attention_states in advance since each output and state of encoder is unchanged while decoding.
+    attention_states = tf.nn.conv1d(attention_states, attnw, 1, 'SAME')
   sys.stdout = sys.stderr
 
   def attention_weight(output):
-    #y = _linear(output, attn_size, True)
+    """
+    Calculate attention weights for every encoder's input by taking an inner product the weight bector (attnv) with the conbined and transformed the encoder's output and decoder's state.
+
+    output_probabilities[i] = V・tanh(W1・attention_state[i] + W2・decoder's output[t])
+     - i: the index of an input word
+     - t: current time-step in decoding
+     - v: a tensor with the shape [attention_size]
+     - W1: a tensor with the shape [attention_size, encoder's rnn_size]
+     - W2: a tensor with the shape [attention_size, decoder's rnn_size]
+    """
     y = tf.matmul(output, attnw2)
     y = tf.reshape(y, [-1, 1, attn_size])
-    # Calculate attention weights for every encoder's input by taking an inner product between the weight bector (attnv), and the conbined decoder's state with the encoder's output.
-    attention_vectors = tf.nn.softmax(tf.reduce_sum(attnv * tf.tanh(y + attention_states), axis=2))
+
+    attention_vectors = tf.nn.softmax(tf.reduce_sum(attnv * tf.tanh(attention_states + y), axis=2))
     return attention_vectors
 
   states = [initial_state]
@@ -79,20 +87,26 @@ def pointer_decoder(encoder_inputs_emb, decoder_inputs, initial_state,
       with tf.name_scope('Decode_%d' % i):
         if i > 0:
           tf.get_variable_scope().reuse_variables()
+        # The first input to the decoder is something like _START (or just a _PAD) token we prepared to start decoding.
         pointed_idx = d
-        # in testing, inputs to decoder won't be used except the first one.
+
+        # If feed_prev == True, inputs to decoder won't be used except the first one. The model makes decisions of which should be the next inputs by itself.
         if feed_prev and i > 0:
-          # take argmax, convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
+          # Take argmax to decide which indices of input should be most possible.
           pointed_idx = tf.argmax(output, axis=1, output_type=tf.int32)
         pointed_idxs.append(pointed_idx)
         with tf.name_scope('copy_from_encoder_inputs'):
+          # Convert the pointed index into one-hot, and get the pointed encoder_inputs by multiplying and reduce_sum.
           pointed_idx = tf.reshape(tf.one_hot(pointed_idx, depth=attn_length), [-1, attn_length, 1]) 
-          inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1) 
+          inp = tf.reduce_sum(encoder_inputs * pointed_idx, axis=1)
+
+          # In their original paper, the gradients shouldn't be propagated to input embeddings through these copying. The embeddings should be updated only from the encoder.
           inp = tf.stop_gradient(inp)
         output, state = cell(inp, states[-1])
+
+        # Calculate the output (and the next input) distribution 
         with tf.name_scope('attention_weight'):
           output = attention_weight(output)
-        #print 'output', output
         states.append(state)
         outputs.append(output)
   with tf.name_scope('outputs'):

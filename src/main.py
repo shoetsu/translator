@@ -48,7 +48,7 @@ class Manager(object):
         self.config.dataset_type, self.config.dataset_path, 
         self.config.num_train_data, self.vocab,
         self.config.target_attribute, self.config.target_columns)
-      self.dataset.train.load_data()
+
 
   def load_config(self, args):
     '''
